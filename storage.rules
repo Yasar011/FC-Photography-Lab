@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Signatures and documents are written and served only by Cloud Functions
+// (Admin SDK), which check booking ownership / admin role against the
+// Realtime Database. No direct client access is allowed.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

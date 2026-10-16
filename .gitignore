@@ -1,0 +1,15 @@
+node_modules/
+web/dist/
+web/.env.local
+web/.env.*.local
+functions/.env*
+!functions/.env.example
+*.local
+firebase-debug*.log
+database-debug.log
+ui-debug.log
+.firebase/
+web/dist-demo/
+web/dist-vercel/
+.vercel/
+.claude/
