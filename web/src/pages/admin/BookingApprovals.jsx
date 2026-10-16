@@ -5,23 +5,23 @@ import { useNow } from '../../lib/hooks.js';
 import { call } from '../../firebase.js';
 import { PageHead } from '../../components/ui.jsx';
 import { useActionDialog } from '../../components/SignApprove.jsx';
-import { AssistantActions, SpecialActions, nextSpecialStep } from '../../components/BookingBits.jsx';
+import { FcccActions, SpecialActions, nextSpecialStep } from '../../components/BookingBits.jsx';
 import { useStatusList } from './AdminDashboard.jsx';
 import Icon from '../../components/Icon.jsx';
 import { STATUS, STUDENT_TYPE_LABELS } from '@shared/constants.js';
 import { formatDate, formatRange, formatDateTime, todayIST } from '@shared/calendar.js';
 
 /**
- * FC Lab Assistant portal:
- *  - New bookings (normal bookings are confirmed instantly — check them, cancel if needed)
- *  - Special bookings whose form must be printed & issued
- *  - Bookings waiting for approval (only when approval is switched on)
+ * Approvals desk — nothing is confirmed without the FC-CC:
+ *  1. Normal bookings waiting for FC-CC approval (Sign & approve / Reject)
+ *  2. Special bookings whose form the FC Lab Assistant must print & issue
+ *  3. Approved upcoming bookings (cancel if needed; optional slip)
  */
 export default function BookingApprovals() {
-  const { role, isStaff, rules } = useAuth();
+  const { role, isStaff, isFccc } = useAuth();
   const now = useNow(60000);
   const today = todayIST(now);
-  const pending = useStatusList(STATUS.PENDING_ASSISTANT_APPROVAL);
+  const pending = useStatusList(STATUS.PENDING_FCCC_APPROVAL);
   const special = useStatusList(STATUS.PENDING_SPECIAL_APPROVAL);
   const approved = useStatusList(STATUS.APPROVED);
   const [openDialog, dialogNode] = useActionDialog();
@@ -29,9 +29,8 @@ export default function BookingApprovals() {
   const toPrint = special.items.filter((b) => nextSpecialStep(b)?.key === 'fcAssistant');
   const fresh = approved.items
     .filter((b) => b.endAt > now && !b.isSpecial)
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .sort((a, b) => a.startAt - b.startAt)
     .slice(0, 20);
-  const showApprovalColumn = pending.items.length > 0 || rules.assistantApproval !== 'none';
 
   const cancel = (b) =>
     openDialog({
@@ -67,31 +66,31 @@ export default function BookingApprovals() {
   return (
     <>
       <PageHead
-        eyebrow="FC Lab Assistant"
-        title="Bookings desk"
-        sub="Normal bookings are confirmed instantly — check new ones and cancel if needed. Special bookings: print the form and hand it to the student."
+        eyebrow={isFccc ? 'FC-CC' : 'FC Lab Assistant'}
+        title="Approvals"
+        sub="Every booking is confirmed only after FC-CC approval. FC Lab Assistant: print special-hours forms and hand them to students."
       >
         <span className="live-dot">Live</span>
       </PageHead>
       <div className="board">
-        {showApprovalColumn && (
-          <div className="board-col">
-            <h3><Icon name="checkCircle" /> Waiting for approval <span className="n">{pending.items.length}</span></h3>
-            <div className="hint">Approval is switched on in Rules & Questions.</div>
-            {pending.items.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>Nothing waiting.</p>}
-            {pending.items.map((b) => card(b, <AssistantActions booking={b} role={role} onDialog={openDialog} compact />))}
-          </div>
-        )}
         <div className="board-col">
-          <h3><Icon name="calendar" /> New & upcoming bookings <span className="n">{fresh.length}</span></h3>
-          <div className="hint">Newest first. No printing needed.</div>
+          <h3><Icon name="stamp" /> Waiting for FC-CC approval <span className="n">{pending.items.length}</span></h3>
+          <div className="hint">{isFccc ? 'Check and Sign & approve. Nothing is confirmed until you do.' : 'Only the FC-CC can approve these.'}</div>
+          {pending.items.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>Nothing waiting.</p>}
+          {pending.items.map((b) => card(b, <FcccActions booking={b} role={role} onDialog={openDialog} compact />, (
+            b.fcApproval?.state === 'APPROVED' && <div className="tiny muted" style={{ marginTop: 4 }}>FC student {b.fcApproval.byName} approved · {formatDateTime(b.fcApproval.at)}</div>
+          )))}
+        </div>
+        <div className="board-col">
+          <h3><Icon name="calendar" /> Approved — upcoming <span className="n">{fresh.length}</span></h3>
+          <div className="hint">Approved by the FC-CC. No printing needed.</div>
           {fresh.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>No upcoming bookings.</p>}
           {fresh.map((b) => card(b, (
             <div className="row" style={{ gap: 8 }}>
               {isStaff && <button className="btn btn-sm btn-danger" onClick={() => cancel(b)}>Cancel</button>}
               <Link className="btn btn-sm btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Slip (optional)</Link>
             </div>
-          ), <div className="tiny muted" style={{ marginTop: 4 }}>Booked {formatDateTime(b.createdAt)}{b.bookedByStaff ? ' · by staff' : ''}</div>))}
+          ), b.fcccApproval && <div className="tiny muted" style={{ marginTop: 4 }}>Approved by {b.fcccApproval.byName} · {formatDateTime(b.fcccApproval.at)}</div>))}
         </div>
         <div className="board-col">
           <h3><Icon name="print" /> Special: print & issue form <span className="n">{toPrint.length}</span></h3>

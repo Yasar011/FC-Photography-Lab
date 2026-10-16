@@ -45,6 +45,8 @@ export const ACCOUNT_STATUS_LABELS = {
 };
 
 export const ROLES = { MAIN: 'main', STAFF: 'staff', FCCC: 'fccc' };
+/** Every booking needs the FC-CC's approval — only these roles can give it. */
+export const APPROVER_ROLES = ['fccc', 'main'];
 export const ROLE_LABELS = {
   main: 'Main Admin',
   staff: 'Staff Admin',
@@ -57,7 +59,7 @@ export const STATUS = {
   PENDING_FC_APPROVAL: 'PENDING_FC_APPROVAL',
   FC_APPROVED: 'FC_APPROVED',
   PENDING_SPECIAL_APPROVAL: 'PENDING_SPECIAL_APPROVAL',
-  PENDING_ASSISTANT_APPROVAL: 'PENDING_ASSISTANT_APPROVAL',
+  PENDING_FCCC_APPROVAL: 'PENDING_FCCC_APPROVAL',
   FACULTY_CONCERN: 'FACULTY_CONCERN',
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
@@ -71,7 +73,7 @@ export const STATUS_META = {
   PENDING_FC_APPROVAL: { label: 'Pending FC Student Approval', tone: 'orange' },
   FC_APPROVED: { label: 'FC Student Approved', tone: 'yellow' },
   PENDING_SPECIAL_APPROVAL: { label: 'Pending Special Approval', tone: 'orange' },
-  PENDING_ASSISTANT_APPROVAL: { label: 'Pending FC Lab Assistant Approval', tone: 'orange' },
+  PENDING_FCCC_APPROVAL: { label: 'Pending FC-CC Approval', tone: 'orange' },
   FACULTY_CONCERN: { label: 'Faculty Concern', tone: 'orange' },
   APPROVED: { label: 'Approved', tone: 'green' },
   REJECTED: { label: 'Rejected', tone: 'red' },
@@ -86,7 +88,7 @@ export const ACTIVE_STATUSES = [
   STATUS.PENDING_FC_APPROVAL,
   STATUS.FC_APPROVED,
   STATUS.PENDING_SPECIAL_APPROVAL,
-  STATUS.PENDING_ASSISTANT_APPROVAL,
+  STATUS.PENDING_FCCC_APPROVAL,
   STATUS.FACULTY_CONCERN,
   STATUS.APPROVED,
 ];
@@ -95,7 +97,7 @@ export const PENDING_STATUSES = [
   STATUS.PENDING_FC_APPROVAL,
   STATUS.FC_APPROVED,
   STATUS.PENDING_SPECIAL_APPROVAL,
-  STATUS.PENDING_ASSISTANT_APPROVAL,
+  STATUS.PENDING_FCCC_APPROVAL,
   STATUS.FACULTY_CONCERN,
 ];
 // Statuses that keep the slot marked in the calendar (released otherwise).

@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { call } from '../firebase.js';
 import { STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
 import { formatDate, formatHour, formatRange, BOOKABLE_STATES, SLOT_LABELS, SLOT } from '@shared/calendar.js';
-import { sortedEntries, maxHoursFor, needsAssistantApproval, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
+import { sortedEntries, maxHoursFor, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
 
 import SignaturePad from './SignaturePad.jsx';
 import PersonLookup from './PersonLookup.jsx';
@@ -152,8 +152,8 @@ export default function BookingForm({ student, staffMode, selection, onSelection
     );
   }
 
-  const waitsForAssistant = !staffMode && needsAssistantApproval(rules, student.studentType);
-  const submitLabel = needsFc ? 'Submit for FC approval' : requiresSpecial ? 'Submit for special approval' : waitsForAssistant ? 'Send for approval' : 'Book now';
+  // Nothing is confirmed without the FC-CC.
+  const submitLabel = needsFc ? 'Submit for FC student approval' : requiresSpecial ? 'Submit for special approval' : 'Send to FC-CC for approval';
   const hasPeople = firstYear || needsFc;
   let n = 0;
 
@@ -381,11 +381,11 @@ function Done({ result, fcStudent, staffMode, date, start, end, studentType }) {
         <StatusBadge status={result.status} />
       </div>
       {ok && <Alert kind="ok"><span>You're booked! <b>No printing needed.</b> A confirmation email has been sent.</span></Alert>}
-      {result.status === STATUS.PENDING_ASSISTANT_APPROVAL && (
-        <Alert kind="info"><span>Sent to the <b>FC Lab Assistant</b> for approval. You'll get an email once it's approved. No printing needed.</span></Alert>
+      {result.status === STATUS.PENDING_FCCC_APPROVAL && (
+        <Alert kind="info"><span>Sent to the <b>FC-CC</b> for approval. Your booking is confirmed only after the FC-CC approves — you'll get an email. No printing needed.</span></Alert>
       )}
       {result.status === STATUS.PENDING_FC_APPROVAL && (
-        <Alert kind="warn">Waiting for {fcStudent?.name || 'the FC student'} to approve from their own account. They've been notified by email.</Alert>
+        <Alert kind="warn">Waiting for {fcStudent?.name || 'the FC student'} to approve from their own account, then the FC-CC. They've been notified by email.</Alert>
       )}
       {special && (
         <div className="card card-pad">

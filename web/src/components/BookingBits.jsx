@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './Icon.jsx';
-import { SPECIAL_STEPS, STATUS, STUDENT_TYPE_LABELS, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
+import { SPECIAL_STEPS, STATUS, STUDENT_TYPE_LABELS, APPROVER_ROLES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
 import { formatDate, formatDateTime, formatRange } from '@shared/calendar.js';
 import { call } from '../firebase.js';
 
@@ -174,28 +174,36 @@ export function SpecialActions({ booking, role, onDialog, compact = false, hideP
   );
 }
 
-/** FC Lab Assistant: approve / reject a normal booking. */
-export function AssistantActions({ booking, role, onDialog, compact = false }) {
-  if (booking.status !== STATUS.PENDING_ASSISTANT_APPROVAL || !['staff', 'fccc', 'main'].includes(role)) return null;
+/**
+ * FC-CC approval of a normal booking (nothing is confirmed without it).
+ * FC-CC / Main Admin: Sign & approve. Other admins see who it is waiting for and can reject.
+ */
+export function FcccActions({ booking, role, onDialog, compact = false }) {
+  const waiting = [STATUS.PENDING_FCCC_APPROVAL, STATUS.SUBMITTED, STATUS.FC_APPROVED].includes(booking.status);
+  if (!waiting || !role) return null;
   const sz = compact ? 'btn-sm' : '';
+  const canApprove = APPROVER_ROLES.includes(role);
   return (
     <div className="row" style={{ gap: 8 }}>
-      <button
-        className={`btn btn-green ${sz}`}
-        onClick={() => onDialog({
-          title: `Approve ${booking.id}`,
-          message: `Approve ${booking.studentName}'s booking (${formatDate(booking.date, { weekday: true })} · ${formatRange(booking.startHour, booking.endHour)}). Your name and the time are recorded. No printing is needed.`,
-          confirmLabel: 'Approve',
-          tone: 'green',
-          remarks: 'optional',
-          onConfirm: async (remarks) => {
-            await call('adminBookingDecision', { bookingId: booking.id, decision: 'approve', remarks });
-            return 'Booking approved';
-          },
-        })}
-      >
-        <Icon name="check" /> Approve
-      </button>
+      {canApprove ? (
+        <button
+          className={`btn btn-green ${sz}`}
+          onClick={() => onDialog({
+            kind: 'sign',
+            title: `Approve ${booking.id}`,
+            message: `Approve ${booking.studentName}'s booking (${formatDate(booking.date, { weekday: true })} · ${formatRange(booking.startHour, booking.endHour)}). Your digital signature and “APPROVED” are added. No printing is needed.`,
+            confirmLabel: 'Sign & approve',
+            onConfirm: async ({ signature, remarks }) => {
+              await call('adminBookingDecision', { bookingId: booking.id, decision: 'approve', signature, remarks });
+              return 'Approved & signed';
+            },
+          })}
+        >
+          <Icon name="stamp" /> Sign & approve
+        </button>
+      ) : (
+        <span className="small muted">Waiting for the FC-CC to approve.</span>
+      )}
       <button
         className={`btn btn-danger ${sz}`}
         onClick={() => onDialog({
@@ -313,7 +321,11 @@ export function signatureEntries(b, sigs) {
       note: b.signature?.signedBy && b.signature.signedBy !== b.signature.signerName ? `Entered by ${b.signature.signedBy}` : 'Declaration & undertaking',
     },
   ];
-  if (!b.isSpecial) return out;
+  if (!b.isSpecial) {
+    const a = b.fcccApproval;
+    out.push({ key: 'fccc', role: 'FC-CC — Approved', pending: !a, name: a?.byName, at: a?.at, img: sigs.fccc, approved: Boolean(a) });
+    return out;
+  }
   for (const s of specialStepsFor(b.studentType).filter((x) => x.signs)) {
     const st = steps[s.key];
     if (s.paper) {
@@ -342,12 +354,11 @@ export function handlingNotes(b) {
   if (b.fcApproval?.state === 'APPROVED') notes.push(`FC student ${b.fcApproval.byName} approved online · ${formatDateTime(b.fcApproval.at)}`);
   if (steps.fcAssistant?.state === 'approved') notes.push(`Form printed & issued by FC Lab Assistant ${steps.fcAssistant.byName} · ${formatDateTime(steps.fcAssistant.at)}`);
   if (steps.directorPA?.state === 'approved') notes.push("Forwarded via the Director's PA");
-  if (b.assistantApproval) notes.push(`Approved by FC Lab Assistant ${b.assistantApproval.byName} · ${formatDateTime(b.assistantApproval.at)}`);
   return notes;
 }
 
 export function SignaturesPanel({ booking }) {
-  const version = JSON.stringify([booking.special?.steps, booking.assistantApproval, booking.fcApproval?.state]);
+  const version = JSON.stringify([booking.special?.steps, booking.fcccApproval, booking.fcApproval?.state]);
   const { loading, sigs, error } = useBookingSignatures(booking.id, version);
   const entries = signatureEntries(booking, sigs);
   return (

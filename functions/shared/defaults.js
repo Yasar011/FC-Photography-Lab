@@ -52,10 +52,6 @@ export const DEFAULT_BOOKING_RULES = {
 
   studentCanCancel: true,
 
-  // Who needs FC Lab Assistant approval for normal (regular-hours) bookings:
-  // 'none' (confirmed instantly — the assistant sees and can cancel them),
-  // 'fc' (FC students only) or 'all'. Printing is optional.
-  assistantApproval: 'none',
 
 };
 
@@ -113,7 +109,7 @@ export const DEFAULT_DECLARATION = {
 
 export const DEFAULT_INSTRUCTIONS = {
   text:
-    '• Normal bookings are confirmed instantly. Bookings open for the next 7 days.\n' +
+    '• Every booking is confirmed only after FC-CC approval. Bookings open for the next 7 days.\n' +
     '• Maximum 4 hours per booking for FC students, 3 hours for other students.\n' +
     '• Weekday 9 AM–5 PM is reserved for CLS classes unless opened by FC staff.\n' +
     '• Bookings after 10 PM, on weekends or on holidays need special approval.\n' +
@@ -141,14 +137,6 @@ export const DEFAULT_SETTINGS = {
 export function maxHoursFor(rules, studentType) {
   const r = withRuleDefaults(rules);
   return studentType === 'FC_STUDENT' || studentType === 'FC_IDM_STUDENT' ? r.fcMaxDurationHours : r.maxDurationHours;
-}
-
-/** Does a normal booking by this student type need FC Lab Assistant approval? */
-export function needsAssistantApproval(rules, studentType) {
-  const mode = withRuleDefaults(rules).assistantApproval;
-  if (mode === 'none') return false;
-  if (mode === 'fc') return studentType === 'FC_STUDENT' || studentType === 'FC_IDM_STUDENT';
-  return true;
 }
 
 export function withRuleDefaults(rules) {

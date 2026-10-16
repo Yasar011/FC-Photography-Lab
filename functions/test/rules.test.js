@@ -113,7 +113,7 @@ test('progression scheduling only fires near event dates, once', () => {
   assert.deepEqual(dueProgressionEvents('2027-08-01', { autoProgression: false }, {}), []);
 });
 
-import { maxHoursFor, needsAssistantApproval } from '../shared/defaults.js';
+import { maxHoursFor } from '../shared/defaults.js';
 import { specialStepsFor } from '../shared/constants.js';
 
 test('FC students can book 4 hours, others 3', () => {
@@ -124,12 +124,6 @@ test('FC students can book 4 hours, others 3', () => {
   assert.equal(evaluateRange({ ...four, maxHours: maxHoursFor(R, 'OTHER_DEPT_STUDENT') }).ok, false);
 });
 
-test('FC Lab Assistant approval scope', () => {
-  assert.equal(needsAssistantApproval(R, 'FC_STUDENT'), false); // default: confirmed instantly
-  assert.equal(needsAssistantApproval({ assistantApproval: 'all' }, 'OTHER_DEPT_STUDENT'), true);
-  assert.equal(needsAssistantApproval({ assistantApproval: 'fc' }, 'OTHER_DEPT_STUDENT'), false);
-  assert.equal(needsAssistantApproval({ assistantApproval: 'none' }, 'FC_STUDENT'), false);
-});
 
 test('special approval route: other departments add Dept CC / faculty', () => {
   assert.deepEqual(specialStepsFor('FC_STUDENT').map((s) => s.key), ['fcAssistant', 'directorPA', 'director', 'final']);

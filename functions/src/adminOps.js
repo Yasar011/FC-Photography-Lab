@@ -345,7 +345,6 @@ const SETTINGS_VALIDATORS = {
         .map((x) => str(x, 60).toLowerCase())
         .filter(Boolean),
       studentCanCancel: v.studentCanCancel === true,
-      assistantApproval: ['all', 'fc', 'none'].includes(v.assistantApproval) ? v.assistantApproval : 'none',
     };
     if (r.gridEndHour <= r.gridStartHour) fail('invalid-argument', 'Calendar end must be after start.');
     if (r.classEndHour <= r.classStartHour) fail('invalid-argument', 'Class end must be after class start.');

@@ -21,7 +21,7 @@ import { formatRange, formatDate } from '../shared/calendar.js';
 
 /** Status a booking moves to once the FC approval is in hand. */
 const afterFcStatus = (b) =>
-  b.isSpecial ? STATUS.PENDING_SPECIAL_APPROVAL : b.assistantApprovalRequired ? STATUS.PENDING_ASSISTANT_APPROVAL : STATUS.APPROVED;
+  b.isSpecial ? STATUS.PENDING_SPECIAL_APPROVAL : STATUS.PENDING_FCCC_APPROVAL;
 
 // ---- FC student approves / rejects --------------------------------------------
 export const respondFcApproval = onCall(CALL_OPTS, async (request) => {
@@ -64,7 +64,7 @@ export const respondFcApproval = onCall(CALL_OPTS, async (request) => {
         } else {
           b.status = next;
           addHistory(b, {
-            event: next === STATUS.APPROVED ? 'APPROVED' : next === STATUS.PENDING_ASSISTANT_APPROVAL ? 'SENT TO FC LAB ASSISTANT FOR APPROVAL' : 'SPECIAL APPROVAL REQUIRED',
+            event: next === STATUS.PENDING_FCCC_APPROVAL ? 'SENT TO FC-CC FOR APPROVAL' : 'SPECIAL APPROVAL REQUIRED',
             actor: next === STATUS.APPROVED ? { name: 'System', uid: 'system', role: 'system' } : by,
             at: Date.now() + 1,
           });
@@ -97,7 +97,7 @@ export const respondFcApproval = onCall(CALL_OPTS, async (request) => {
   if (decision === 'reject') emails.push(N.fcRejectedEmail(after, reason));
   else {
     emails.push(N.fcApprovedEmail(after));
-    if (after.status === STATUS.APPROVED) emails.push(N.approvedEmail(after, 'fcApproval.approved'));
+    if (after.status === STATUS.PENDING_FCCC_APPROVAL) emails.push(N.fcccApprovalNeededEmail(after, await adminEmails(['fccc'])));
     if (after.status === STATUS.PENDING_SPECIAL_APPROVAL) {
       emails.push(N.specialRequiredEmail(after, after.email));
       emails.push(N.specialRequiredEmail(after, await adminEmails(['staff', 'fccc']), true));
@@ -193,7 +193,7 @@ export const specialApprovalStep = onCall(CALL_OPTS, async (request) => {
 // ---- Faculty concern resolution (Staff Admin / FC-CC) ---------------------------
 export const resolveFacultyConcern = onCall(CALL_OPTS, async (request) => {
   const actor = await getActor(request);
-  requireRole(actor, ADMIN_ROLES);
+  requireRole(actor, ['fccc', 'main'], 'Only the FC-CC can decide on a faculty concern.');
   const { bookingId, decision } = request.data || {};
   const remarks = str(request.data?.remarks, 1000);
   if (!['approve', 'reject'].includes(decision)) fail('invalid-argument', 'Invalid decision.');
@@ -211,7 +211,7 @@ export const resolveFacultyConcern = onCall(CALL_OPTS, async (request) => {
     }
     // Approve: return to the workflow; pending approvals are still required.
     const prev = b.facultyConcern.previousStatus;
-    b.status = [STATUS.PENDING_FC_APPROVAL, STATUS.PENDING_SPECIAL_APPROVAL, STATUS.PENDING_ASSISTANT_APPROVAL].includes(prev) ? prev : STATUS.APPROVED;
+    b.status = [STATUS.PENDING_FC_APPROVAL, STATUS.PENDING_SPECIAL_APPROVAL, STATUS.PENDING_FCCC_APPROVAL].includes(prev) ? prev : STATUS.APPROVED;
     return addHistory(b, {
       event: b.status === STATUS.APPROVED ? 'APPROVED — FACULTY CONCERN REVIEWED' : 'FACULTY CONCERN REVIEWED',
       actor: by,

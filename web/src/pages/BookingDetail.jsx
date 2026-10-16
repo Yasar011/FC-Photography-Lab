@@ -5,7 +5,7 @@ import { useLive } from '../lib/hooks.js';
 import { call } from '../firebase.js';
 import { StatusBadge, Loading, Alert } from '../components/ui.jsx';
 import { useActionDialog } from '../components/SignApprove.jsx';
-import { BookingFacts, HistoryTimeline, SpecialTracker, SpecialActions, AssistantActions, SignaturesPanel } from '../components/BookingBits.jsx';
+import { BookingFacts, HistoryTimeline, SpecialTracker, SpecialActions, FcccActions, SignaturesPanel } from '../components/BookingBits.jsx';
 import Icon from '../components/Icon.jsx';
 import { STATUS, ACTIVE_STATUSES, STATUS_META } from '@shared/constants.js';
 import { formatDate, formatDateTime, formatRange } from '@shared/calendar.js';
@@ -14,7 +14,7 @@ const TONE_COLOR = { green: 'var(--ev-approved)', orange: 'var(--ev-pending)', y
 
 export default function BookingDetail() {
   const { id } = useParams();
-  const { user, role, isAdmin, isStaff, rules } = useAuth();
+  const { user, role, isAdmin, isStaff, isFccc, rules } = useAuth();
   const { value: b, loading, error } = useLive(`bookings/${id}`, [id]);
   const [ask, dialogNode] = useActionDialog();
 
@@ -26,8 +26,7 @@ export default function BookingDetail() {
   const isOwner = b.studentUid === user.uid;
   const active = ACTIVE_STATUSES.includes(b.status);
   const canStudentCancel = isOwner && active && rules.studentCanCancel && b.startAt > Date.now();
-  const adminCanApprove = isAdmin && [STATUS.SUBMITTED, STATUS.FC_APPROVED].includes(b.status);
-  const assistantPending = b.status === STATUS.PENDING_ASSISTANT_APPROVAL;
+  const fcccPending = [STATUS.PENDING_FCCC_APPROVAL, STATUS.SUBMITTED, STATUS.FC_APPROVED].includes(b.status);
   const tone = STATUS_META[b.status]?.tone;
 
   const open = {
@@ -35,10 +34,6 @@ export default function BookingDetail() {
       title: 'Cancel booking', message: `Cancel ${b.id}? The slot is released for other students.`, confirmLabel: 'Cancel booking', tone: 'danger',
       remarks: isOwner ? 'optional' : 'required', remarksLabel: 'Reason',
       onConfirm: async (reason) => { await call('cancelBooking', { bookingId: b.id, reason }); return 'Booking cancelled'; },
-    }),
-    approve: () => ask({
-      title: 'Approve booking', confirmLabel: 'Approve', tone: 'green', remarks: 'optional',
-      onConfirm: async (remarks) => { await call('adminBookingDecision', { bookingId: b.id, decision: 'approve', remarks }); return 'Booking approved'; },
     }),
     reject: () => ask({
       title: 'Reject booking', message: 'The student is notified and the slot released.', confirmLabel: 'Reject', tone: 'danger', remarks: 'required', remarksLabel: 'Reason',
@@ -87,14 +82,13 @@ export default function BookingDetail() {
 
         {(canStudentCancel || isAdmin || (b.fcStudentUid === user.uid && b.fcApprovalId)) && (
           <div className="row">
-            {adminCanApprove && <button className="btn btn-green" onClick={open.approve}><Icon name="check" /> Approve</button>}
-            {isAdmin && b.status === STATUS.FACULTY_CONCERN && (
+                        {isFccc && b.status === STATUS.FACULTY_CONCERN && (
               <>
                 <button className="btn btn-green" onClick={() => open.concern('approve')}>Approve (dismiss concern)</button>
                 <button className="btn btn-danger" onClick={() => open.concern('reject')}>Reject (uphold concern)</button>
               </>
             )}
-            {isAdmin && active && !assistantPending && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && b.status !== STATUS.FACULTY_CONCERN && <button className="btn btn-danger" onClick={open.reject}>Reject</button>}
+            {isAdmin && active && !fcccPending && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && b.status !== STATUS.FACULTY_CONCERN && <button className="btn btn-danger" onClick={open.reject}>Reject</button>}
             {canStudentCancel && <button className="btn btn-danger" onClick={open.cancel}>Cancel booking</button>}
             {isStaff && active && !isOwner && <button className="btn btn-ghost" onClick={open.cancel}><Icon name="trash" /> Cancel (admin)</button>}
             {(isAdmin || isOwner) && b.isSpecial && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && <Link className="btn btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Print form</Link>}
@@ -116,19 +110,19 @@ export default function BookingDetail() {
                 </div>
               </section>
             )}
-            {!b.isSpecial && b.status === STATUS.PENDING_ASSISTANT_APPROVAL && (
+            {!b.isSpecial && fcccPending && (
               <section className="card">
-                <div className="card-head"><h2>FC Lab Assistant approval</h2></div>
+                <div className="card-head"><h2>FC-CC approval</h2></div>
                 <div className="card-body stack">
-                  <p className="small">{isOwner ? 'Your booking has been sent to the FC Lab Assistant. You will get an email once it is approved.' : 'The student has signed this booking. Approve or reject it — no printing is needed.'}</p>
-                  {isAdmin && <AssistantActions booking={b} role={role} onDialog={ask} />}
+                  <p className="small">{isOwner ? 'Your booking is waiting for the FC-CC. It is confirmed only after the FC-CC approves — you will get an email.' : 'Nothing is confirmed without the FC-CC. The FC-CC approves with a digital signature.'}</p>
+                  {isAdmin && <FcccActions booking={b} role={role} onDialog={ask} />}
                 </div>
               </section>
             )}
             {!b.isSpecial && [STATUS.APPROVED, STATUS.COMPLETED].includes(b.status) && (
               <Alert kind="ok">
                 <span>
-                  <b>No printing needed</b> — this booking is approved in the system{b.assistantApproval ? ` by ${b.assistantApproval.byName}` : ''}. Show your Booking ID at the lab.{' '}
+                  <b>No printing needed</b> — this booking is approved{b.fcccApproval ? ` and signed by FC-CC ${b.fcccApproval.byName}` : ''}. Show your Booking ID at the lab.{' '}
                   <Link to={`/print/${b.id}`}>Print booking slip (optional)</Link>
                 </span>
               </Alert>

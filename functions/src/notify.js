@@ -22,13 +22,30 @@ export function submittedEmail(b) {
       intro: [
         b.bookedByStaff
           ? `This booking was created on your behalf by FC Staff (${b.createdBy?.name}).`
-          : b.status === STATUS.PENDING_ASSISTANT_APPROVAL
-            ? 'Your booking has been sent to the FC Lab Assistant for approval. You will get an email once it is approved.'
+          : b.status === STATUS.PENDING_FCCC_APPROVAL
+            ? 'Your booking has been sent to the FC-CC for approval. It is confirmed only after the FC-CC approves — you will get an email.'
             : 'Your FC Photography Lab booking request has been recorded.',
       ],
       rows: bookingRows(b),
       extraRows: [...fcRows(b), ...facultyRows(b)],
       action: bookingLink(b),
+    },
+  };
+}
+
+export function fcccApprovalNeededEmail(b, to) {
+  return {
+    type: 'fccc_approval_needed',
+    to,
+    subject: `FC Photography Lab – Approval Needed – ${b.id}`,
+    bookingId: b.id,
+    trigger: 'booking.fcccApproval',
+    content: {
+      heading: 'A booking is waiting for your approval',
+      intro: [`${b.studentName} (${b.niftId}) has booked the Photography Lab. It is confirmed only after your approval.`],
+      rows: bookingRows(b),
+      extraRows: [...fcRows(b), ...facultyRows(b)],
+      action: { label: 'Review & approve', url: appLink(`/bookings/${b.id}`) },
     },
   };
 }
@@ -42,7 +59,7 @@ export function staffCreatedEmail(b) {
     trigger: 'booking.staffCreate',
     content: {
       heading: 'Booking created by FC Staff',
-      intro: [`A Photography Lab booking has been created for you by ${b.createdBy?.name} (FC Staff).`],
+      intro: [`A Photography Lab booking has been created for you by ${b.createdBy?.name} (FC Staff). It is confirmed after FC-CC approval.`],
       rows: bookingRows(b),
       extraRows: [...fcRows(b), ...facultyRows(b), ['Booked by', 'Staff Admin']],
       action: bookingLink(b),

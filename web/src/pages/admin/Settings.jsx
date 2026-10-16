@@ -144,15 +144,6 @@ function RulesEditor() {
         </div>
         <div className="card-body" style={{ paddingTop: 0 }}>
           <label className="check"><input type="checkbox" checked={r.studentCanCancel} onChange={bool('studentCanCancel')} /> Students may cancel their own bookings before the start time</label>
-          <div style={{ marginTop: 12, maxWidth: 520 }}>
-            <Field label="FC Lab Assistant approval for normal bookings" help="Printing is optional for normal bookings.">
-              <select className="select" value={r.assistantApproval || 'none'} onChange={(e) => set('assistantApproval', e.target.value)}>
-                <option value="none">No — confirm instantly (assistant can still cancel)</option>
-                <option value="fc">Yes — FC students only</option>
-                <option value="all">Yes — all normal bookings</option>
-              </select>
-            </Field>
-          </div>
         </div>
       </section>
       <section className="card">

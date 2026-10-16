@@ -102,7 +102,7 @@ export const getBookingSignatures = onCall(async (request) => {
     if (st?.signaturePath) wanted[`special.${k}`] = st.signaturePath;
     if (st?.documentPath) wanted[`doc.${k}`] = st.documentPath;
   }
-  if (b.assistantApproval?.signaturePath) wanted.assistant = b.assistantApproval.signaturePath;
+  if (b.fcccApproval?.signaturePath) wanted.fccc = b.fcccApproval.signaturePath;
 
   const out = {};
   await Promise.all(

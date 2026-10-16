@@ -36,7 +36,7 @@ export default function AdminDashboard() {
 
   const fcPending = useStatusList(STATUS.PENDING_FC_APPROVAL);
   const special = useStatusList(STATUS.PENDING_SPECIAL_APPROVAL);
-  const assistantQ = useStatusList(STATUS.PENDING_ASSISTANT_APPROVAL);
+  const fcccQ = useStatusList(STATUS.PENDING_FCCC_APPROVAL);
   const concerns = useStatusList(STATUS.FACULTY_CONCERN);
 
   const { slots } = useSlotRange(today, today);
@@ -52,7 +52,7 @@ export default function AdminDashboard() {
   const stats = [
     ["Today's bookings", todays.length, '/admin/calendar'],
     ['Upcoming (14 days)', upcoming.length, '/admin/bookings'],
-    ['Awaiting FC Lab Assistant', assistantQ.items.length, '/admin/approvals'],
+    ['Awaiting FC-CC approval', fcccQ.items.length, '/admin/approvals'],
     ['Pending FC approval', fcPending.items.length, '/admin/bookings?status=PENDING_FC_APPROVAL'],
     ['Special approvals', special.items.length, '/admin/special'],
     ['Faculty concerns', concerns.items.length, '/admin/concerns'],

@@ -17,7 +17,7 @@ import {
 
 } from './core.js';
 import { SMTP_PASS, sendAll, adminEmails, appLink } from './mail.js';
-import { decodeSignature } from './signatures.js';
+import { decodeSignature, stampSignature } from './signatures.js';
 import * as N from './notify.js';
 import {
   SLOT_TAKEN_MSG,
@@ -37,6 +37,7 @@ import {
   STUDENT_TYPE_LABELS,
   FC_APPROVAL_STATE,
   ACCOUNT_STATUS,
+  APPROVER_ROLES,
   isValidSemester,
   isValidEmail,
   isAllowedEmail,
@@ -52,7 +53,7 @@ import {
   bookingIdFor,
   formatRange,
 } from '../shared/calendar.js';
-import { sortedEntries, maxHoursFor, needsAssistantApproval } from '../shared/defaults.js';
+import { sortedEntries, maxHoursFor } from '../shared/defaults.js';
 
 export const CALL_OPTS = { secrets: [SMTP_PASS] };
 
@@ -308,8 +309,9 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     special: isSpecial ? { required: true, steps: {} } : null,
     usesOverride: range.usesOverride,
     // Normal bookings: FC Lab Assistant approves in the portal (printing optional).
-    // Staff-made bookings are already reviewed by the FC staff — no second approval.
-    assistantApprovalRequired: !isSpecial && !staffBooking && needsAssistantApproval(rules, student.studentType),
+    // Nothing is confirmed without the FC-CC: normal bookings go to the FC-CC,
+    // special bookings end with the FC-CC's final approval.
+    fcccApprovalRequired: true,
     signature: {
       path: signaturePath,
       signerName: student.name,
@@ -364,12 +366,9 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
   } else if (isSpecial) {
     booking.status = STATUS.PENDING_SPECIAL_APPROVAL;
     addHistory(booking, { status: booking.status, event: 'SPECIAL APPROVAL REQUIRED', actor: by, note: booking.specialReasons.join(', '), at: now + 1 });
-  } else if (booking.assistantApprovalRequired) {
-    booking.status = STATUS.PENDING_ASSISTANT_APPROVAL;
-    addHistory(booking, { status: booking.status, event: 'SENT TO FC LAB ASSISTANT FOR APPROVAL', actor: by, at: now + 1 });
   } else {
-    booking.status = STATUS.APPROVED;
-    addHistory(booking, { status: booking.status, event: 'APPROVED', actor: { name: 'System', uid: 'system', role: 'system' }, note: 'All booking rules satisfied.', at: now + 1 });
+    booking.status = STATUS.PENDING_FCCC_APPROVAL;
+    addHistory(booking, { status: booking.status, event: 'SENT TO FC-CC FOR APPROVAL', actor: by, at: now + 1 });
   }
 
   let facultyToken = null;
@@ -409,6 +408,7 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
   else if (booking.status === STATUS.APPROVED) emails.push(N.approvedEmail(booking, 'booking.create'));
   else emails.push(N.submittedEmail(booking));
   if (fcApprovalId) emails.push(N.fcRequestEmail(booking, fcApprovalId, fcStudent.email));
+  if (booking.status === STATUS.PENDING_FCCC_APPROVAL) emails.push(N.fcccApprovalNeededEmail(booking, await adminEmails(['fccc'])));
   if (booking.status === STATUS.PENDING_SPECIAL_APPROVAL) {
     emails.push(N.specialRequiredEmail(booking, booking.email));
     emails.push(N.specialRequiredEmail(booking, await adminEmails(['staff', 'fccc']), true));
@@ -471,10 +471,16 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
   const by = actorRef(actor);
   if (!['approve', 'reject'].includes(decision)) fail('invalid-argument', 'Invalid decision.');
 
-  // The FC Lab Assistant approves in the portal (recorded with name & time — no signature).
+  // Only the FC-CC (or Main Admin) can approve — digitally signed. Anyone with an
+  // admin role can reject (e.g. the FC Lab Assistant spotting a problem).
   const current = (await db.ref(`bookings/${bookingId}`).get()).val();
   if (!current) fail('not-found', 'Booking not found.');
-  const assistantStep = decision === 'approve' && current.status === STATUS.PENDING_ASSISTANT_APPROVAL;
+  if (decision === 'approve' && !APPROVER_ROLES.includes(actor.role)) {
+    fail('permission-denied', 'Only the FC-CC can approve bookings.');
+  }
+  const signaturePath = decision === 'approve'
+    ? await stampSignature(actor, bookingId, 'fccc', { dataUrl: request.data?.signature, required: true })
+    : null;
 
   const { after } = await mutateBooking(bookingId, (b) => {
     if (decision === 'reject') {
@@ -484,18 +490,14 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
       b.rejection = { byUid: actor.uid, byName: actor.name, role: by.role, at: Date.now(), reason: remarks };
       return addHistory(b, { event: 'REJECTED', actor: by, note: remarks });
     }
-    // Approval is only for bookings whose required approvals are complete.
-    if (b.status === STATUS.PENDING_FC_APPROVAL) fail('failed-precondition', 'The FC student must approve this booking from their own account.');
+    // Approval is only for bookings whose other approvals are complete.
+    if (b.status === STATUS.PENDING_FC_APPROVAL) fail('failed-precondition', 'The FC student must approve this booking from their own account first.');
     if (b.status === STATUS.PENDING_SPECIAL_APPROVAL) fail('failed-precondition', 'Use the special approval tracker to approve this booking.');
     if (b.status === STATUS.FACULTY_CONCERN) fail('failed-precondition', 'Resolve the faculty concern instead.');
-    if (![STATUS.SUBMITTED, STATUS.FC_APPROVED, STATUS.PENDING_ASSISTANT_APPROVAL].includes(b.status)) fail('failed-precondition', 'This booking cannot be approved.');
-    if (b.isSpecial && b.special?.steps?.final?.state !== 'approved') fail('failed-precondition', 'Special approval is not complete.');
-    if (b.status === STATUS.PENDING_ASSISTANT_APPROVAL) {
-      b.assistantApproval = { byUid: actor.uid, byName: actor.name, role: actor.role, at: Date.now(), remarks: remarks || null };
-    }
-    const event = b.status === STATUS.PENDING_ASSISTANT_APPROVAL ? 'APPROVED BY FC LAB ASSISTANT' : 'APPROVED';
+    if (![STATUS.SUBMITTED, STATUS.FC_APPROVED, STATUS.PENDING_FCCC_APPROVAL].includes(b.status)) fail('failed-precondition', 'This booking cannot be approved.');
+    b.fcccApproval = { byUid: actor.uid, byName: actor.name, role: actor.role, at: Date.now(), remarks: remarks || null, signaturePath };
     b.status = STATUS.APPROVED;
-    return addHistory(b, { event, actor: by, note: remarks });
+    return addHistory(b, { event: 'APPROVED & DIGITALLY SIGNED BY FC-CC', actor: by, note: remarks });
   });
 
   await syncSlots(after);
@@ -505,7 +507,7 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
   }
   await logApproval(by, {
     bookingId: after.id,
-    kind: assistantStep ? 'fc_assistant' : 'admin',
+    kind: decision === 'approve' ? 'fccc' : 'admin',
     decision,
     remarks,
     auditAction: decision === 'approve' ? 'ADMIN_APPROVED' : 'ADMIN_REJECTED',
