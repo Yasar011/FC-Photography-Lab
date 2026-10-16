@@ -40,7 +40,9 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   const requiresSpecial = range.some((s) => s.requiresSpecial);
   const usesOverride = range.some((s) => s.override);
 
-  const equipment = sortedEntries(Object.keys(equipmentConfig || {}).length ? equipmentConfig : DEFAULT_EQUIPMENT).filter((e) => e.enabled);
+  // Other-department students aren't offered items like the FC camera.
+  const equipment = sortedEntries(Object.keys(equipmentConfig || {}).length ? equipmentConfig : DEFAULT_EQUIPMENT)
+    .filter((e) => e.enabled && !(student.studentType === STUDENT_TYPES.OTHER && e.otherDeptBringOwn));
   const questions = sortedEntries(settings.questions || DEFAULT_QUESTIONS).filter((q) => q.enabled);
   const declaration = settings.declaration || DEFAULT_DECLARATION;
   const confirmationList = sortedEntries(declaration.confirmations).filter((c) => c.enabled);
@@ -53,7 +55,6 @@ export default function BookingForm({ student, staffMode, selection, onSelection
     purpose: '',
     equipment: equipment.some((e) => e.id === 'photoLab') ? ['photoLab'] : [],
     equipmentReasons: {},
-    bringOwnAck: false,
     // Prefill sensible defaults (e.g. number of people = 1).
     answers: Object.fromEntries(questions.filter((q) => q.defaultValue !== undefined && q.defaultValue !== null).map((q) => [q.id, q.defaultValue])),
     // Last faculty used is filled in for you.
@@ -72,7 +73,6 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   const [result, setResult] = useState(null);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const bringOwnNeeded = isOther && rules.otherDeptNoticeEnabled && form.equipment.some((id) => equipmentConfig?.[id]?.otherDeptBringOwn);
 
   // Time pickers — only offer starts that are bookable, ends up to the max duration.
   const startOptions = daySlots.filter((s) => BOOKABLE_STATES.includes(s.state) || s.hour === start).map((s) => s.hour);
@@ -92,7 +92,6 @@ export default function BookingForm({ student, staffMode, selection, onSelection
       const item = equipmentConfig?.[id];
       if (item?.requiresReason && (form.equipmentReasons[id] || '').trim().length < 3) return item.reasonLabel || `Please explain why you need ${item.name}.`;
     }
-    if (bringOwnNeeded && !form.bringOwnAck) return 'Please confirm you will bring your department camera/equipment.';
     for (const q of questions) {
       const v = form.answers[q.id];
       if (q.required && (v === undefined || v === '' || v === false)) return `Please answer: ${q.label}`;
@@ -123,7 +122,6 @@ export default function BookingForm({ student, staffMode, selection, onSelection
         purpose: form.purpose.trim(),
         equipment: form.equipment,
         equipmentReasons: form.equipmentReasons,
-        bringOwnAck: form.bringOwnAck,
         answers: form.answers,
         facultyName: form.facultyName.trim(),
         facultyEmail: form.facultyEmail.trim(),
@@ -242,17 +240,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
             </Field>
           ))}
           {isOther && rules.otherDeptNoticeEnabled && (
-            <Alert kind="info">
-              <div className="stack" style={{ gap: 8 }}>
-                <span>{rules.otherDeptNotice}</span>
-                {bringOwnNeeded && (
-                  <label className="check">
-                    <input type="checkbox" checked={form.bringOwnAck} onChange={(e) => set('bringOwnAck', e.target.checked)} />
-                    <b>I will bring my department camera/equipment.</b>
-                  </label>
-                )}
-              </div>
-            </Alert>
+            <p className="red-note">{rules.otherDeptNotice}</p>
           )}
           {questions.map((q) => (
             <QuestionInput key={q.id} q={q} value={form.answers[q.id]} onChange={(v) => set('answers', { ...form.answers, [q.id]: v })} />

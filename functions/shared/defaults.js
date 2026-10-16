@@ -41,8 +41,10 @@ export const DEFAULT_BOOKING_RULES = {
   fcApproverTypes: ['FC_STUDENT'],
 
   otherDeptNoticeEnabled: true,
+  // Shown in red to other-department students; items marked `otherDeptBringOwn`
+  // (the FC camera) are not offered to them at all.
   otherDeptNotice:
-    'Students from other departments must bring their department camera/equipment where required.',
+    'You need to bring your personal camera or department camera. The FC camera will not be issued to you.',
 
   specialHoursMessage:
     'This booking is outside regular lab hours and requires additional approval.',

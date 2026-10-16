@@ -515,3 +515,6 @@ button.allday-chip { cursor: pointer; }
 .dur-chips button { border: 1px solid var(--line-2); background: var(--surface); border-radius: 18px; height: 34px; padding: 0 14px; font-weight: 600; cursor: pointer; color: var(--ink-2); }
 .dur-chips button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 .dur-chips button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Red notice for other-department students (bring your own camera) */
+.red-note { margin: 0; color: var(--red); font-weight: 700; font-size: 14px; }

@@ -191,10 +191,14 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
   const equipment = {};
   const equipmentList = [];
   const equipmentReasons = {};
-  let bringOwnNeeded = false;
+  const isOtherDept = student.studentType === STUDENT_TYPES.OTHER;
   for (const id of Array.isArray(data.equipment) ? data.equipment : []) {
     const item = settings.equipment?.[id];
     if (!item || !item.enabled || equipment[id]) continue;
+    // Items like the FC camera are not issued to other-department students.
+    if (isOtherDept && item.otherDeptBringOwn) {
+      fail('failed-precondition', `${item.name} is not issued to students from other departments. ${rules.otherDeptNotice}`);
+    }
     equipment[id] = true;
     equipmentList.push(item.name);
     if (item.requiresReason) {
@@ -202,13 +206,8 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
       if (reason.length < 3) fail('invalid-argument', item.reasonLabel || `Please explain why you need ${item.name}.`);
       equipmentReasons[id] = { label: item.reasonLabel || item.name, value: reason };
     }
-    if (item.otherDeptBringOwn) bringOwnNeeded = true;
   }
   if (!equipmentList.length) fail('invalid-argument', 'Please select at least one requirement.');
-  const isOtherDept = student.studentType === STUDENT_TYPES.OTHER;
-  if (isOtherDept && bringOwnNeeded && rules.otherDeptNoticeEnabled && data.bringOwnAck !== true) {
-    fail('failed-precondition', rules.otherDeptNotice);
-  }
 
   const answers = collectAnswers(settings.questions, data.answers);
 
@@ -301,7 +300,7 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     equipmentList,
     equipmentReasons,
     clsReason: equipmentReasons.clsRoom?.value || '',
-    bringOwnAck: data.bringOwnAck === true,
+    bringsOwnCamera: isOtherDept, // other departments bring their own / department camera
     answers,
     requiresFcApproval,
     fcStudent,

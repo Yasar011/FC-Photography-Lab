@@ -104,7 +104,7 @@ async function seed() {
   await fcccApprove(await call('createBooking', booking('Neha Verma', W2, 20, 21, 'Studio orientation — new lighting kit', ['photoLab', 'lights'], { onBehalfOfNiftId: 'FC/24/022', remarks: 'Booked at the FC office counter' }), 'demo-staff'));
 
   // Other department: one waiting for FC student approval, one approved by the FC student.
-  await call('createBooking', booking('Riya Sharma', W2, 17, 19, 'Portfolio Shoot', ['photoLab', 'camera', 'lights'], { fcStudentNiftId: 'FC/23/014', bringOwnAck: true, project: 'BFT portfolio' }), 'demo-other');
+  await call('createBooking', booking('Riya Sharma', W2, 17, 19, 'Portfolio Shoot', ['photoLab', 'lights'], { fcStudentNiftId: 'FC/23/014', project: 'BFT portfolio' }), 'demo-other');
   const b5 = await call('createBooking', booking('Riya Sharma', W3, 18, 20, 'Green-screen test for fashion film', ['photoLab', 'greenRoom'], { ...FACULTY2, fcStudentNiftId: 'FC/24/022', project: 'Fashion film' }), 'demo-other');
   await fcApprove(b5, 'demo-fc2');
   await fcccApprove(b5);

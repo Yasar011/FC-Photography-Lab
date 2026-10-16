@@ -242,7 +242,7 @@ export function BookingFacts({ b, admin = false }) {
     b.faculty ? ['Subject / Faculty', `${b.faculty.name} — ${b.faculty.email}`] : null,
     b.isSpecial ? ['Special approval', (b.specialReasons || []).join(', ') || 'Required'] : null,
     b.usesOverride ? ['Availability', 'Uses a slot opened by FC Staff (Admin Override)'] : null,
-    b.bringOwnAck ? ['Own equipment', 'Student confirmed they will bring department equipment'] : null,
+    b.bringsOwnCamera ? ['Camera', 'Brings personal / department camera (FC camera not issued)'] : null,
     ...Object.values(b.answers || {}).map((a) => [a.label, a.value === true ? 'Yes' : String(a.value)]),
     ['Booked by', b.bookedByStaff ? `Staff Admin — ${b.createdBy?.name}` : 'Student'],
     ['Created', formatDateTime(b.createdAt)],

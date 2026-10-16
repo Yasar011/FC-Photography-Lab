@@ -327,7 +327,7 @@ function EquipmentEditor() {
             <Field label="Name"><input className="input" value={e.name} onChange={(ev) => update({ name: ev.target.value })} /></Field>
             <Field label="Reason question (if required)"><input className="input" value={e.reasonLabel || ''} onChange={(ev) => update({ reasonLabel: ev.target.value })} placeholder="e.g. Why do you need the CLS Class Room?" /></Field>
             <label className="check"><input type="checkbox" checked={e.requiresReason === true} onChange={(ev) => update({ requiresReason: ev.target.checked })} /> Ask for a reason when selected</label>
-            <label className="check"><input type="checkbox" checked={e.otherDeptBringOwn === true} onChange={(ev) => update({ otherDeptBringOwn: ev.target.checked })} /> Other Department students must bring their own</label>
+            <label className="check"><input type="checkbox" checked={e.otherDeptBringOwn === true} onChange={(ev) => update({ otherDeptBringOwn: ev.target.checked })} /> Not issued to other-department students (hidden for them — they bring their own)</label>
           </div>
         )}
       />
