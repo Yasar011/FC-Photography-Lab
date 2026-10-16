@@ -123,6 +123,8 @@ export const specialApprovalStep = onCall(CALL_OPTS, async (request) => {
   if (!stepDef.roles.includes(actor.role)) fail('permission-denied', `Your role cannot record the ${stepDef.label} step.`);
   if (!['approve', 'reject'].includes(decision)) fail('invalid-argument', 'Invalid decision.');
   if (decision === 'reject' && !remarks) fail('invalid-argument', 'Please enter a reason for rejection.');
+  // The FC Lab Assistant only prints & issues the form; rejecting is an FC-CC decision.
+  if (decision === 'reject' && !['fccc', 'main'].includes(actor.role)) fail('permission-denied', 'Only the FC-CC can reject a booking.');
   const by = actorRef(actor);
 
   const nextSystemStep = (b) => (b.special?.steps?.fcAssistant?.state === 'approved' ? 'final' : 'fcAssistant');

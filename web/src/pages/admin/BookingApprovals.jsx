@@ -18,7 +18,7 @@ import { formatDate, formatRange, formatDateTime, todayIST } from '@shared/calen
  *  3. Approved upcoming bookings (cancel if needed; optional slip)
  */
 export default function BookingApprovals() {
-  const { role, isStaff, isFccc } = useAuth();
+  const { role, isFccc } = useAuth();
   const now = useNow(60000);
   const today = todayIST(now);
   const pending = useStatusList(STATUS.PENDING_FCCC_APPROVAL);
@@ -87,7 +87,7 @@ export default function BookingApprovals() {
           {fresh.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>No upcoming bookings.</p>}
           {fresh.map((b) => card(b, (
             <div className="row" style={{ gap: 8 }}>
-              {isStaff && <button className="btn btn-sm btn-danger" onClick={() => cancel(b)}>Cancel</button>}
+              {isFccc && <button className="btn btn-sm btn-danger" onClick={() => cancel(b)}>Cancel</button>}
               <Link className="btn btn-sm btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Slip (optional)</Link>
             </div>
           ), b.fcccApproval && <div className="tiny muted" style={{ marginTop: 4 }}>Approved by {b.fcccApproval.byName} · {formatDateTime(b.fcccApproval.at)}</div>))}

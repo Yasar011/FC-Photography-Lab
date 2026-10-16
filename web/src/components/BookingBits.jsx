@@ -112,7 +112,8 @@ export function SpecialActions({ booking, role, onDialog, compact = false, hideP
         return 'Booking rejected';
       },
     });
-  const rejectBtn = <button className={`btn btn-danger ${sz}`} onClick={reject}>Reject</button>;
+  // Only the FC-CC can reject; the FC Lab Assistant just prints & hands over the form.
+  const rejectBtn = APPROVER_ROLES.includes(role) ? <button className={`btn btn-danger ${sz}`} onClick={reject}>Reject</button> : null;
   const printBtn = hidePrint ? null : (
     <Link className={`btn btn-tonal ${sz}`} to={`/print/${booking.id}`}>
       <Icon name="print" /> {next.key === 'fcAssistant' ? 'Print form' : 'Reprint form'}
@@ -183,10 +184,10 @@ export function FcccActions({ booking, role, onDialog, compact = false }) {
   if (!waiting || !role) return null;
   const sz = compact ? 'btn-sm' : '';
   const canApprove = APPROVER_ROLES.includes(role);
+  if (!canApprove) return <span className="small muted">Waiting for the FC-CC to approve.</span>;
   return (
     <div className="row" style={{ gap: 8 }}>
-      {canApprove ? (
-        <button
+      <button
           className={`btn btn-green ${sz}`}
           onClick={() => onDialog({
             kind: 'sign',
@@ -201,9 +202,6 @@ export function FcccActions({ booking, role, onDialog, compact = false }) {
         >
           <Icon name="stamp" /> Sign & approve
         </button>
-      ) : (
-        <span className="small muted">Waiting for the FC-CC to approve.</span>
-      )}
       <button
         className={`btn btn-danger ${sz}`}
         onClick={() => onDialog({

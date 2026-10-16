@@ -428,7 +428,8 @@ export const cancelBooking = onCall(CALL_OPTS, async (request) => {
   const { bookingId } = request.data || {};
   const reason = str(request.data?.reason, 500);
   const settings = await loadSettings();
-  const isAdmin = BOOKING_STAFF_ROLES.includes(actor.role);
+  // Cancelling someone else's booking is an FC-CC decision too.
+  const isAdmin = APPROVER_ROLES.includes(actor.role);
   const by = actorRef(actor);
 
   const { after } = await mutateBooking(bookingId, (b) => {
@@ -465,19 +466,16 @@ export const cancelBooking = onCall(CALL_OPTS, async (request) => {
 // ---- Admin decisions (approve / reject a regular booking) ----------------------
 export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
   const actor = await getActor(request);
-  requireRole(actor, ADMIN_ROLES);
+  // Approve AND reject are FC-CC decisions; the FC Lab Assistant only mediates.
+  requireRole(actor, APPROVER_ROLES, 'Only the FC-CC can approve or reject bookings.');
   const { bookingId, decision } = request.data || {};
   const remarks = str(request.data?.remarks, 1000);
   const by = actorRef(actor);
   if (!['approve', 'reject'].includes(decision)) fail('invalid-argument', 'Invalid decision.');
 
-  // Only the FC-CC (or Main Admin) can approve — digitally signed. Anyone with an
-  // admin role can reject (e.g. the FC Lab Assistant spotting a problem).
+  // Only the FC-CC (or Main Admin) decides; approvals are digitally signed.
   const current = (await db.ref(`bookings/${bookingId}`).get()).val();
   if (!current) fail('not-found', 'Booking not found.');
-  if (decision === 'approve' && !APPROVER_ROLES.includes(actor.role)) {
-    fail('permission-denied', 'Only the FC-CC can approve bookings.');
-  }
   const signaturePath = decision === 'approve'
     ? await stampSignature(actor, bookingId, 'fccc', { dataUrl: request.data?.signature, required: true })
     : null;

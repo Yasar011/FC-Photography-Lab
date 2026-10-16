@@ -164,8 +164,8 @@ The domain `nift.ac.in` appears in three places. Keep them in sync:
 | Role | Can |
 |---|---|
 | **Main Admin** | Everything: admins and roles, rules, questions, declaration, equipment, academic calendar, all bookings |
-| **Staff Admin** (incl. FC Assistant) | Calendar, book for students, open, block or specially open slots, holidays, student records (type, semester, department, status), approve, reject or cancel regular bookings, print the special-hours form and mark it issued |
-| **FC-CC Admin** | Review bookings, receive the Director-signed form and give final approval, faculty concerns |
+| **Staff Admin** (FC Lab Assistant — mediator) | Calendar, book for students, open/block slots, holidays, student records; prints special-hours forms and hands them to students. **Cannot approve, reject or cancel bookings** |
+| **FC-CC Admin** | **Every decision:** approves (digitally signed) or rejects every booking, cancels bookings, gives special final approval, decides faculty concerns |
 | **FC Student** (by classification) | Own bookings, plus approve or reject FC approval requests assigned to them |
 
 ## Tests

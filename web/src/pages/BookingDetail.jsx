@@ -14,7 +14,7 @@ const TONE_COLOR = { green: 'var(--ev-approved)', orange: 'var(--ev-pending)', y
 
 export default function BookingDetail() {
   const { id } = useParams();
-  const { user, role, isAdmin, isStaff, isFccc, rules } = useAuth();
+  const { user, role, isAdmin, isFccc, rules } = useAuth();
   const { value: b, loading, error } = useLive(`bookings/${id}`, [id]);
   const [ask, dialogNode] = useActionDialog();
 
@@ -88,9 +88,9 @@ export default function BookingDetail() {
                 <button className="btn btn-danger" onClick={() => open.concern('reject')}>Reject (uphold concern)</button>
               </>
             )}
-            {isAdmin && active && !fcccPending && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && b.status !== STATUS.FACULTY_CONCERN && <button className="btn btn-danger" onClick={open.reject}>Reject</button>}
+            {isFccc && active && !fcccPending && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && b.status !== STATUS.FACULTY_CONCERN && <button className="btn btn-danger" onClick={open.reject}>Reject</button>}
             {canStudentCancel && <button className="btn btn-danger" onClick={open.cancel}>Cancel booking</button>}
-            {isStaff && active && !isOwner && <button className="btn btn-ghost" onClick={open.cancel}><Icon name="trash" /> Cancel (admin)</button>}
+            {isFccc && active && !isOwner && <button className="btn btn-ghost" onClick={open.cancel}><Icon name="trash" /> Cancel (FC-CC)</button>}
             {(isAdmin || isOwner) && b.isSpecial && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && <Link className="btn btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Print form</Link>}
             {b.fcStudentUid === user.uid && b.fcApprovalId && <Link className="btn btn-tonal" to={`/approvals/${b.fcApprovalId}`}>Open FC approval</Link>}
           </div>
