@@ -3,7 +3,7 @@ import { orderByChild, limitToLast } from 'firebase/database';
 
 import { useLiveList, dbQuery } from '../lib/hooks.js';
 import { Modal } from '../components/ui.jsx';
-import { DEMO_ACCOUNTS, currentUser, signInAs, onSessionChange } from './session.js';
+import { DEMO_ACCOUNTS, accountByUid, currentUser, signInAs, onSessionChange } from './session.js';
 import { resetDemo } from './store.js';
 import { formatDateTime } from '@shared/calendar.js';
 
@@ -13,6 +13,15 @@ export default function DemoBar() {
   const [panel, setPanel] = useState(null);
   const [expanded, setExpanded] = useState(false); // phones: collapsed into the top bar
   useEffect(() => onSessionChange(setUser), []);
+  // The guide opens by itself after the first sign-in, so new visitors know where to start.
+  useEffect(() => {
+    if (!user) return;
+    try {
+      if (localStorage.getItem('fc-demo-guide-seen')) return;
+      localStorage.setItem('fc-demo-guide-seen', '1');
+      setPanel('guide');
+    } catch { /* ignore */ }
+  }, [user]);
   if (!user) return null;
 
   return (
@@ -20,12 +29,14 @@ export default function DemoBar() {
       <div className={`demo-bar no-print ${expanded ? 'expanded' : ''}`} role="region" aria-label="Demo controls">
         <button className="demo-tag" onClick={() => setExpanded((x) => !x)} aria-expanded={expanded}>DEMO</button>
         <span className="demo-who">{user.name}</span>
+        <button className="demo-guide-btn" onClick={() => { setPanel('guide'); setExpanded(false); }}>Guide</button>
         <button onClick={() => { setPanel('switch'); setExpanded(false); }}>Switch account</button>
         <button onClick={() => { setPanel('outbox'); setExpanded(false); }}>Email outbox</button>
         <button onClick={() => window.open(window.location.href, '_blank')}>New tab</button>
       </div>
       {panel === 'switch' && <SwitchAccount current={user} onClose={() => setPanel(null)} />}
       {panel === 'outbox' && <Outbox onClose={() => setPanel(null)} />}
+      {panel === 'guide' && <Guide current={user} onClose={() => setPanel(null)} />}
     </>
   );
 }
@@ -113,6 +124,54 @@ function Outbox({ onClose }) {
           ))}
         </div>
       )}
+    </Modal>
+  );
+}
+
+/** Every sample booking, what it shows, and one click to see it as the right person. */
+function Guide({ current, onClose }) {
+  const { items } = useLiveList(dbQuery('demoGuide', orderByChild('order')), []);
+  const groups = [];
+  for (const g of [...items].sort((a, b) => a.order - b.order)) {
+    let grp = groups.find((x) => x.name === g.group);
+    if (!grp) groups.push((grp = { name: g.group, items: [] }));
+    grp.items.push(g);
+  }
+  const open = (g) => {
+    if (g.signInAs && g.signInAs !== current.uid) signInAs(g.signInAs);
+    window.location.hash = g.bookingId ? `#/bookings/${g.bookingId}` : '#/';
+    onClose();
+  };
+  return (
+    <Modal title="Demo guide — every example booking" onClose={onClose}>
+      <p className="small muted">
+        Click an example to open it as the right person. Use <b>Switch account</b> to go back, or <b>New tab</b> to watch two
+        people at once — both tabs update live.
+      </p>
+      <div className="stack" style={{ gap: 14 }}>
+        {groups.map((grp) => (
+          <div key={grp.name}>
+            <div className="tiny" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 6 }}>{grp.name}</div>
+            <div className="stack" style={{ gap: 6 }}>
+              {grp.items.map((g) => {
+                const who = accountByUid(g.signInAs);
+                return (
+                  <button key={g.id || g.order} className="btn" style={{ justifyContent: 'flex-start', height: 'auto', padding: '10px 12px', textAlign: 'left' }} onClick={() => open(g)}>
+                    <span style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600 }}>{g.title}</div>
+                      <div className="tiny" style={{ fontWeight: 400, opacity: 0.8, marginTop: 2 }}>{g.text}</div>
+                      <div className="tiny" style={{ fontWeight: 600, color: 'var(--primary)', marginTop: 4 }}>
+                        {g.bookingId ? `${g.bookingId} · ` : ''}Open as {who?.name || 'current account'}
+                      </div>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {!items.length && <p className="muted">Loading…</p>}
+      </div>
     </Modal>
   );
 }

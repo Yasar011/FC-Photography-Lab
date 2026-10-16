@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../lib/auth.jsx';
@@ -9,13 +10,13 @@ import { FcccActions, SpecialActions, nextSpecialStep } from '../../components/B
 import { useStatusList } from './AdminDashboard.jsx';
 import Icon from '../../components/Icon.jsx';
 import { STATUS, STUDENT_TYPE_LABELS } from '@shared/constants.js';
-import { formatDate, formatRange, formatDateTime, todayIST } from '@shared/calendar.js';
+import { formatDate, formatRange, todayIST } from '@shared/calendar.js';
 
 /**
- * Approvals desk — nothing is confirmed without the FC-CC:
- *  1. Normal bookings waiting for FC-CC approval (Sign & approve / Reject)
- *  2. Special bookings whose form the FC Lab Assistant must print & issue
- *  3. Approved upcoming bookings (cancel if needed; optional slip)
+ * Approvals — one simple list at a time:
+ *  • To approve:   everything waiting for the FC-CC (normal + special forms that came back signed)
+ *  • Forms to print: special bookings the FC Lab Assistant must print & hand over
+ *  • Approved:     upcoming approved bookings
  */
 export default function BookingApprovals() {
   const { role, isFccc } = useAuth();
@@ -26,11 +27,12 @@ export default function BookingApprovals() {
   const approved = useStatusList(STATUS.APPROVED);
   const [openDialog, dialogNode] = useActionDialog();
 
-  const toPrint = special.items.filter((b) => nextSpecialStep(b)?.key === 'fcAssistant');
-  const fresh = approved.items
-    .filter((b) => b.endAt > now && !b.isSpecial)
-    .sort((a, b) => a.startAt - b.startAt)
-    .slice(0, 20);
+  const byStart = (a, b) => a.startAt - b.startAt;
+  const toApprove = [...pending.items, ...special.items.filter((b) => nextSpecialStep(b)?.key === 'final')].sort(byStart);
+  const toPrint = special.items.filter((b) => nextSpecialStep(b)?.key === 'fcAssistant').sort(byStart);
+  const upcoming = approved.items.filter((b) => b.endAt > now).sort(byStart);
+
+  const [tab, setTab] = useState(isFccc ? 'approve' : 'print');
 
   const cancel = (b) =>
     openDialog({
@@ -46,61 +48,62 @@ export default function BookingApprovals() {
       },
     });
 
-  const card = (b, actions, extra) => (
-    <div key={b.id} className="bcard">
-      <div className="top">
-        <Link to={`/bookings/${b.id}`} className="booking-id small">{b.id}</Link>
-        {b.date === today && <span className="badge tone-red">Today</span>}
-      </div>
-      <div>
-        <div style={{ fontWeight: 600 }}>{b.studentName} <span className="small muted">· {b.niftId} · {STUDENT_TYPE_LABELS[b.studentType]}</span></div>
-        <div className="small">{formatDate(b.date, { weekday: true })} · {formatRange(b.startHour, b.endHour)} ({b.duration} h)</div>
-        <div className="small muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.purpose}</div>
-        {b.faculty && <div className="tiny muted">Faculty: {b.faculty.name}</div>}
-        {extra}
-      </div>
-      {actions}
-    </div>
-  );
+  const tabs = [
+    { key: 'approve', label: 'To approve', n: toApprove.length, hint: isFccc ? 'Open a booking to check it, then Sign & approve or Reject.' : 'Only the FC-CC can approve these.' },
+    { key: 'print', label: 'Forms to print', n: toPrint.length, hint: 'After 10 PM / weekend / holiday. Print the form and hand it to the student.' },
+    { key: 'approved', label: 'Approved', n: upcoming.length, hint: 'Confirmed by the FC-CC. No printing needed.' },
+  ];
+  const current = tabs.find((t) => t.key === tab);
+  const list = tab === 'approve' ? toApprove : tab === 'print' ? toPrint : upcoming;
+
+  const actionsFor = (b) => {
+    if (tab === 'print') return <SpecialActions booking={b} role={role} onDialog={openDialog} compact />;
+    if (tab === 'approve') {
+      return b.status === STATUS.PENDING_SPECIAL_APPROVAL
+        ? <SpecialActions booking={b} role={role} onDialog={openDialog} compact hidePrint />
+        : <FcccActions booking={b} role={role} onDialog={openDialog} compact />;
+    }
+    return isFccc ? <button className="btn btn-sm btn-ghost" onClick={() => cancel(b)}>Cancel</button> : null;
+  };
 
   return (
     <>
-      <PageHead
-        eyebrow={isFccc ? 'FC-CC' : 'FC Lab Assistant'}
-        title="Approvals"
-        sub="Every booking is confirmed only after FC-CC approval. FC Lab Assistant: print special-hours forms and hand them to students."
-      >
+      <PageHead eyebrow={isFccc ? 'FC-CC' : 'FC Lab Assistant'} title="Approvals">
         <span className="live-dot">Live</span>
       </PageHead>
-      <div className="board">
-        <div className="board-col">
-          <h3><Icon name="stamp" /> Waiting for FC-CC approval <span className="n">{pending.items.length}</span></h3>
-          <div className="hint">{isFccc ? 'Check and Sign & approve. Nothing is confirmed until you do.' : 'Only the FC-CC can approve these.'}</div>
-          {pending.items.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>Nothing waiting.</p>}
-          {pending.items.map((b) => card(b, <FcccActions booking={b} role={role} onDialog={openDialog} compact />, (
-            b.fcApproval?.state === 'APPROVED' && <div className="tiny muted" style={{ marginTop: 4 }}>FC student {b.fcApproval.byName} approved · {formatDateTime(b.fcApproval.at)}</div>
-          )))}
-        </div>
-        <div className="board-col">
-          <h3><Icon name="calendar" /> Approved — upcoming <span className="n">{fresh.length}</span></h3>
-          <div className="hint">Approved by the FC-CC. No printing needed.</div>
-          {fresh.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>No upcoming bookings.</p>}
-          {fresh.map((b) => card(b, (
-            <div className="row" style={{ gap: 8 }}>
-              {isFccc && <button className="btn btn-sm btn-danger" onClick={() => cancel(b)}>Cancel</button>}
-              <Link className="btn btn-sm btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Slip (optional)</Link>
-            </div>
-          ), b.fcccApproval && <div className="tiny muted" style={{ marginTop: 4 }}>Approved by {b.fcccApproval.byName} · {formatDateTime(b.fcccApproval.at)}</div>))}
-        </div>
-        <div className="board-col">
-          <h3><Icon name="print" /> Special: print & issue form <span className="n">{toPrint.length}</span></h3>
-          <div className="hint">After 10 PM · weekend · holiday. Print the form and hand it to the student.</div>
-          {toPrint.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>Nothing to print.</p>}
-          {toPrint.map((b) => card(b, <SpecialActions booking={b} role={role} onDialog={openDialog} compact />, (
-            <div className="tiny" style={{ marginTop: 4, color: 'var(--orange)' }}>{(b.specialReasons || []).join(', ')}</div>
-          )))}
-        </div>
+
+      <div className="tabs" role="tablist">
+        {tabs.map((t) => (
+          <button key={t.key} role="tab" aria-selected={tab === t.key} className={tab === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>
+            {t.label} <span className={`tab-n ${t.n && t.key !== 'approved' ? 'hot' : ''}`}>{t.n}</span>
+          </button>
+        ))}
       </div>
+      <p className="small muted" style={{ margin: '0 0 12px' }}>{current.hint}</p>
+
+      {list.length === 0 ? (
+        <div className="appr-empty"><Icon name="check" /> Nothing here.</div>
+      ) : (
+        <div className="appr-list">
+          {list.map((b) => (
+            <div key={b.id} className="appr-row">
+              <Link to={`/bookings/${b.id}`} className="appr-when">
+                <b>{b.date === today ? 'Today' : formatDate(b.date, { weekday: true })}</b>
+                <span>{formatRange(b.startHour, b.endHour)}</span>
+              </Link>
+              <Link to={`/bookings/${b.id}`} className="appr-main">
+                <div className="appr-name">
+                  {b.studentName}
+                  <span className="appr-tag">{STUDENT_TYPE_LABELS[b.studentType]}</span>
+                  {b.isSpecial && <span className="appr-tag special">Special</span>}
+                </div>
+                <div className="small muted appr-purpose">{b.purpose}</div>
+              </Link>
+              <div className="appr-actions">{actionsFor(b)}</div>
+            </div>
+          ))}
+        </div>
+      )}
       {dialogNode}
     </>
   );
