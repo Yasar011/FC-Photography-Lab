@@ -308,7 +308,8 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     special: isSpecial ? { required: true, steps: {} } : null,
     usesOverride: range.usesOverride,
     // Normal bookings: FC Lab Assistant approves in the portal (printing optional).
-    assistantApprovalRequired: !isSpecial && needsAssistantApproval(rules, student.studentType),
+    // Staff-made bookings are already reviewed by the FC staff — no second approval.
+    assistantApprovalRequired: !isSpecial && !staffBooking && needsAssistantApproval(rules, student.studentType),
     signature: {
       path: signaturePath,
       signerName: student.name,
@@ -523,6 +524,31 @@ export const getSignature = onCall(async (request) => {
   if (!allowed) fail('permission-denied', 'You cannot view this signature.');
   const [buf] = await bucket().file(b.signature.path).download();
   return { dataUrl: `data:image/png;base64,${buf.toString('base64')}` };
+});
+
+// ---- Student search by name or NIFT ID (FC student / senior pickers) -------------
+// Returns only eligible, active students and only public fields.
+export const searchStudents = onCall(async (request) => {
+  const actor = await getActor(request);
+  const q = str(request.data?.query, 60).toLowerCase();
+  const purpose = request.data?.purpose;
+  if (q.length < 2) return { results: [] };
+  const rules = (await loadSettings()).bookingRules;
+  const all = (await db.ref('students').get()).val() || {};
+  const results = [];
+  for (const s of Object.values(all)) {
+    if (!s?.uid || s.uid === actor.uid || s.status !== ACCOUNT_STATUS.ACTIVE) continue;
+    if (purpose === 'fc' && !(rules.fcApproverTypes || [STUDENT_TYPES.FC]).includes(s.studentType)) continue;
+    if (purpose === 'senior' && Number(s.semester) < rules.seniorMinSemester) continue;
+    if (!String(s.name || '').toLowerCase().includes(q) && !String(s.niftId || '').toLowerCase().includes(q)) continue;
+    results.push({
+      name: s.name, niftId: s.niftId, department: s.department, semester: s.semester,
+      studentType: s.studentType, studentTypeLabel: STUDENT_TYPE_LABELS[s.studentType] || s.studentType,
+    });
+    if (results.length >= 8) break;
+  }
+  results.sort((a, b) => a.name.localeCompare(b.name));
+  return { results };
 });
 
 // ---- Student lookup (minimal public info for FC / senior selection) ------------

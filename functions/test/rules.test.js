@@ -125,7 +125,8 @@ test('FC students can book 4 hours, others 3', () => {
 });
 
 test('FC Lab Assistant approval scope', () => {
-  assert.equal(needsAssistantApproval(R, 'FC_STUDENT'), true);
+  assert.equal(needsAssistantApproval(R, 'FC_STUDENT'), false); // default: confirmed instantly
+  assert.equal(needsAssistantApproval({ assistantApproval: 'all' }, 'OTHER_DEPT_STUDENT'), true);
   assert.equal(needsAssistantApproval({ assistantApproval: 'fc' }, 'OTHER_DEPT_STUDENT'), false);
   assert.equal(needsAssistantApproval({ assistantApproval: 'none' }, 'FC_STUDENT'), false);
 });

@@ -10,6 +10,7 @@ export {
   adminBookingDecision,
   getSignature,
   lookupStudent,
+  searchStudents,
 } from './bookings.js';
 export {
   respondFcApproval,

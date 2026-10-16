@@ -53,8 +53,9 @@ export const DEFAULT_BOOKING_RULES = {
   studentCanCancel: true,
 
   // Who needs FC Lab Assistant approval for normal (regular-hours) bookings:
-  // 'all' | 'fc' (FC students only) | 'none' (auto-approved). Printing is optional.
-  assistantApproval: 'all',
+  // 'none' (confirmed instantly — the assistant sees and can cancel them),
+  // 'fc' (FC students only) or 'all'. Printing is optional.
+  assistantApproval: 'none',
 
 };
 
@@ -74,27 +75,20 @@ export const DEFAULT_EQUIPMENT = {
 };
 
 export const DEFAULT_QUESTIONS = {
-  q_project: {
-    label: 'Project / subject this shoot is for',
-    type: 'text',
-    required: true,
-    enabled: true,
-    order: 1,
-    helpText: 'e.g. Portfolio, Fashion Photography assignment, Graduation project',
-  },
   q_team: {
-    label: 'Number of people who will be in the lab',
+    label: 'Number of people in the lab',
     type: 'number',
     required: true,
     enabled: true,
-    order: 2,
+    order: 1,
+    defaultValue: 1,
   },
   q_models: {
-    label: 'Names of other students/models attending (if any)',
+    label: 'Other students / models attending (optional)',
     type: 'textarea',
     required: false,
     enabled: true,
-    order: 3,
+    order: 2,
   },
 };
 
@@ -106,31 +100,20 @@ export const DEFAULT_DECLARATION = {
     'instructions of the lab staff, and leave the lab clean and in order. I accept responsibility ' +
     'for any loss of or damage to equipment caused during my booking, and I will report any ' +
     'damage or malfunction to the FC staff immediately.',
+  // One tick keeps booking quick; Main Admin can add more confirmations.
   confirmations: {
-    c_rules: {
-      label: 'I have read and will follow the FC Photography Lab rules.',
+    c_agree: {
+      label: 'I have read and agree to the declaration and the lab rules.',
       required: true,
       enabled: true,
       order: 1,
-    },
-    c_damage: {
-      label: 'I accept responsibility for any equipment damage during my booking.',
-      required: true,
-      enabled: true,
-      order: 2,
-    },
-    c_time: {
-      label: 'I will vacate the lab at the end of my booked time.',
-      required: true,
-      enabled: true,
-      order: 3,
     },
   },
 };
 
 export const DEFAULT_INSTRUCTIONS = {
   text:
-    '• Bookings open for the next 7 days only.\n' +
+    '• Normal bookings are confirmed instantly. Bookings open for the next 7 days.\n' +
     '• Maximum 4 hours per booking for FC students, 3 hours for other students.\n' +
     '• Weekday 9 AM–5 PM is reserved for CLS classes unless opened by FC staff.\n' +
     '• Bookings after 10 PM, on weekends or on holidays need special approval.\n' +

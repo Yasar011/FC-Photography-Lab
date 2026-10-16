@@ -6,7 +6,8 @@ import { useMyBookings, useMyFcApprovals, isUpcoming } from '../lib/bookings.js'
 import { StatusBadge, Alert, Empty } from '../components/ui.jsx';
 import { nextSpecialStep } from '../components/BookingBits.jsx';
 import Icon from '../components/Icon.jsx';
-import { formatRange, istParts, dayOfWeek, DAY_NAMES } from '@shared/calendar.js';
+import { formatRange, formatHour, istParts, dayOfWeek, DAY_NAMES, bookingWindow, datesBetween, addDays, todayIST, SLOT } from '@shared/calendar.js';
+import { useSlotRange, daySlots } from '../components/Calendar.jsx';
 import { ACCOUNT_STATUS, FC_APPROVAL_STATE, STATUS_META } from '@shared/constants.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -64,6 +65,8 @@ export default function StudentDashboard() {
         );
       })}
 
+      {active && <QuickBook />}
+
       <div className="grid grid-4">
         <Link to="/book" className="tile primary">
           <span className="tile-icon"><Icon name="plus" /></span>
@@ -113,5 +116,46 @@ export default function StudentDashboard() {
         ))}
       </section>
     </div>
+  );
+}
+
+/** One-tap booking: the next free regular-hours slots. */
+function QuickBook() {
+  const { user, rules, settings } = useAuth();
+  const now = useNow(60000);
+  const win = bookingWindow(rules, now);
+  const { slots, loading } = useSlotRange(win.from, win.to);
+  const today = todayIST(now);
+  const picks = [];
+  for (const d of datesBetween(win.from, win.to)) {
+    for (const s of daySlots({ date: d, rules, settings, slots, nowMs: now, viewerUid: user.uid })) {
+      if (s.state === SLOT.AVAILABLE || s.state === SLOT.OVERRIDE_OPEN) picks.push(s);
+      if (picks.length >= 6) break;
+    }
+    if (picks.length >= 6) break;
+  }
+  const dayLabel = (d) => (d === today ? 'Today' : d === addDays(today, 1) ? 'Tomorrow' : `${DAY_NAMES[dayOfWeek(d)]} ${Number(d.slice(8))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`);
+  return (
+    <section className="card card-pad">
+      <div className="row-between" style={{ marginBottom: 12 }}>
+        <div>
+          <h2>Next free slots</h2>
+          <div className="small muted">Tap one to book it — you can change the time in the form.</div>
+        </div>
+        <Link className="btn btn-sm" to="/book">Open calendar</Link>
+      </div>
+      {loading ? <p className="small muted">Checking live availability…</p> : picks.length === 0 ? (
+        <p className="small muted">No free regular slots this week. <Link to="/book">See all times</Link> (evenings after 10 PM and weekends need special approval).</p>
+      ) : (
+        <div className="quick-chips">
+          {picks.map((s) => (
+            <Link key={s.date + s.hour} className="quick-chip" to={`/book?date=${s.date}&start=${s.hour}&end=${s.hour + 1}`}>
+              <span className="d">{dayLabel(s.date)}</span>
+              <span className="t">{formatHour(s.hour)} – {formatHour(s.hour + 1)}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

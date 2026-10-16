@@ -498,3 +498,20 @@ button.allday-chip { cursor: pointer; }
 .print-sheet .signgrid { border-width: 1px 0 0 1px; }
 .print-sheet .signgrid > div,
 .print-sheet .signgrid > div:last-child { border-right: 1px solid #8a8a8a; border-bottom: 1px solid #8a8a8a; }
+
+/* Student picker (type a name) */
+.lookup { position: relative; }
+.lookup-busy { position: absolute; right: 12px; top: 11px; width: 20px; height: 20px; }
+.lookup-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 6px; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-3); max-height: 280px; overflow: auto; }
+.lookup-list button { all: unset; display: block; width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 8px; cursor: pointer; }
+.lookup-list button:hover, .lookup-list button:focus { background: var(--primary-softer); }
+.person-chip { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--green-bg); }
+.quick-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.quick-chip { display: inline-flex; flex-direction: column; padding: 10px 16px; border-radius: 14px; background: var(--primary-softer); color: var(--on-primary-soft); text-decoration: none !important; border: 1px solid transparent; }
+.quick-chip:hover { border-color: var(--primary); }
+.quick-chip .d { font-size: 12px; font-weight: 600; color: var(--muted); }
+.quick-chip .t { font-weight: 700; }
+.dur-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.dur-chips button { border: 1px solid var(--line-2); background: var(--surface); border-radius: 18px; height: 34px; padding: 0 14px; font-weight: 600; cursor: pointer; color: var(--ink-2); }
+.dur-chips button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.dur-chips button:disabled { opacity: 0.4; cursor: not-allowed; }

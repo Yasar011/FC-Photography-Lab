@@ -94,7 +94,12 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
   for (const d of dates) freeCount[d] = slotsByDate[d].filter((s) => BOOKABLE_STATES.includes(s.state)).length;
 
   // Labels for events: own bookings (student) or everyone's (staff).
-  const { items: mine } = useMyBookings(staffMode ? null : user.uid);
+  const { items: mine } = useMyBookings(staffMode ? student.uid : user.uid);
+  // Faculty used before (most recent first) — one tap in the form.
+  const pastFaculty = [];
+  for (const b of mine) {
+    if (b.faculty?.email && !pastFaculty.some((f) => f.email === b.faculty.email)) pastFaculty.push(b.faculty);
+  }
   const mineMap = Object.fromEntries(mine.map((b) => [b.id, b]));
   const bq = useMemo(() => (staffMode ? dbQuery('bookings', orderByChild('date'), startAt(win.from), endAt(win.to)) : null), [staffMode, win.from, win.to]);
   const { value: allMap } = useLive(bq, [bq]);
@@ -233,6 +238,7 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
           dates={windowDates}
           slotsByDate={slotsByDate}
           onClose={() => { setFormOpen(false); setSelection(null); }}
+          pastFaculty={pastFaculty.slice(0, 4)}
         />
       )}
 

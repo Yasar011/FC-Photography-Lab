@@ -345,7 +345,7 @@ const SETTINGS_VALIDATORS = {
         .map((x) => str(x, 60).toLowerCase())
         .filter(Boolean),
       studentCanCancel: v.studentCanCancel === true,
-      assistantApproval: ['all', 'fc', 'none'].includes(v.assistantApproval) ? v.assistantApproval : 'all',
+      assistantApproval: ['all', 'fc', 'none'].includes(v.assistantApproval) ? v.assistantApproval : 'none',
     };
     if (r.gridEndHour <= r.gridStartHour) fail('invalid-argument', 'Calendar end must be after start.');
     if (r.classEndHour <= r.classStartHour) fail('invalid-argument', 'Class end must be after class start.');
@@ -360,6 +360,7 @@ const SETTINGS_VALIDATORS = {
       type: ['text', 'textarea', 'number', 'select', 'checkbox'].includes(q.type) ? q.type : 'text',
       options: str(q.options, 1000),
       helpText: str(q.helpText, 300),
+      defaultValue: q.type === 'number' && q.defaultValue !== '' && q.defaultValue !== undefined && Number.isFinite(Number(q.defaultValue)) ? Number(q.defaultValue) : null,
       required: q.required === true,
       enabled: q.enabled !== false,
       order: Number(q.order) || 0,

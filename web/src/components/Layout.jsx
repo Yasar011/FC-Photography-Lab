@@ -120,7 +120,7 @@ export default function Layout() {
               <Item to="/admin" icon="home" end>Dashboard</Item>
               <Item to="/admin/calendar" icon="calendar">Lab calendar</Item>
               <Item to="/admin/special" icon="stamp" count={special} hot>Special approvals</Item>
-              <Item to="/admin/approvals" icon="checkCircle" count={assistantPending} hot>Booking approvals</Item>
+              <Item to="/admin/approvals" icon="checkCircle" count={assistantPending} hot>Bookings desk</Item>
               <Item to="/admin/concerns" icon="flag" count={concerns} hot>Faculty concerns</Item>
               <Item to="/admin/bookings" icon="list">All bookings</Item>
               {isStaff && <Item to="/admin/students" icon="users">Students</Item>}

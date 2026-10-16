@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
  * Draw-on-screen signature. Calls onSubmit(dataUrl) when the student presses
  * "Submit Signature"; onClear() when cleared.
  */
-export default function SignaturePad({ onSubmit, onClear, submitted }) {
+export default function SignaturePad({ onSubmit, onClear, onDraw, submitted }) {
   const canvasRef = useRef(null);
   const drawing = useRef(false);
   const last = useRef(null);
@@ -71,6 +71,7 @@ export default function SignaturePad({ onSubmit, onClear, submitted }) {
     if (!hasInk && strokes.current > 8) setHasInk(true);
   };
   const up = () => {
+    if (drawing.current && strokes.current > 8) onDraw?.(exportPng());
     drawing.current = false;
   };
 
@@ -82,8 +83,8 @@ export default function SignaturePad({ onSubmit, onClear, submitted }) {
     onClear?.();
   };
 
-  const submit = () => {
-    // Export on a white background, trimmed to a sensible size.
+  // Export on a white background, trimmed to a sensible size.
+  const exportPng = () => {
     const src = canvasRef.current;
     const out = document.createElement('canvas');
     const w = Math.min(src.width, 900);
@@ -94,8 +95,9 @@ export default function SignaturePad({ onSubmit, onClear, submitted }) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(src, 0, 0, w, h);
-    onSubmit(out.toDataURL('image/png'));
+    return out.toDataURL('image/png');
   };
+  const submit = () => onSubmit(exportPng());
 
   return (
     <div className="stack">

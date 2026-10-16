@@ -1,69 +1,118 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { call } from '../firebase.js';
-import { normalizeNiftId } from '@shared/constants.js';
+import { normalizeNiftId, isValidNiftId } from '@shared/constants.js';
 import { Field, TypeBadge } from './ui.jsx';
 
 /**
- * Find a registered student by NIFT ID (server-side lookup returns only
- * name / department / semester / type). `value` is the found student or null.
+ * Pick a registered student by typing their name or NIFT ID. Only eligible,
+ * active students are suggested (server-side), with public fields only.
+ * `value` is the chosen student or null.
  */
 export default function PersonLookup({ label, purpose, value, onChange, help, required }) {
-  const [id, setId] = useState(value?.niftId || '');
+  const [text, setText] = useState('');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const timer = useRef(null);
+  const boxRef = useRef(null);
 
-  const find = async () => {
-    const niftId = normalizeNiftId(id);
-    if (!niftId) return;
-    setBusy(true);
+  useEffect(() => {
+    const close = (e) => boxRef.current && !boxRef.current.contains(e.target) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, []);
+
+  const search = (q) => {
+    clearTimeout(timer.current);
     setMsg('');
-    onChange(null);
-    try {
-      const r = await call('lookupStudent', { niftId, purpose });
-      if (!r.found) setMsg('No registered student with this NIFT ID. They must sign in and register first.');
-      else if (!r.eligible) setMsg(`${r.student.name}: ${r.reason}`);
-      else onChange(r.student);
-    } catch (err) {
-      setMsg(err.message);
-    } finally {
-      setBusy(false);
+    if (q.trim().length < 2) {
+      setResults([]);
+      return;
     }
+    timer.current = setTimeout(async () => {
+      setBusy(true);
+      try {
+        const r = await call('searchStudents', { query: q.trim(), purpose });
+        setResults(r.results || []);
+        setOpen(true);
+        if (!r.results?.length) {
+          // Exact NIFT ID typed? Explain why that student can't be chosen.
+          if (isValidNiftId(q)) {
+            const one = await call('lookupStudent', { niftId: normalizeNiftId(q), purpose });
+            setMsg(!one.found ? 'No registered student with this NIFT ID — they must sign in and register first.' : `${one.student.name}: ${one.reason}`);
+          } else {
+            setMsg(purpose === 'fc' ? 'No matching FC student found.' : 'No matching student found.');
+          }
+        }
+      } catch (err) {
+        setMsg(err.message);
+      } finally {
+        setBusy(false);
+      }
+    }, 300);
   };
 
-  return (
-    <div className="stack" style={{ gap: 8 }}>
-      <div className="grid grid-2">
-        <Field label={`${label} — NIFT ID`} required={required} help={help}>
-          <div className="row" style={{ flexWrap: 'nowrap' }}>
-            <input
-              className="input mono"
-              value={id}
-              onChange={(e) => {
-                setId(e.target.value);
-                if (value) onChange(null);
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), find())}
-              placeholder="FC/23/101"
-              autoCapitalize="characters"
-            />
-            <button type="button" className="btn" onClick={find} disabled={busy || !id.trim()}>
-              {busy ? '…' : 'Find'}
-            </button>
-          </div>
-        </Field>
-        <Field label={`${label} — Name`}>
-          <input className="input" value={value?.name || ''} readOnly placeholder="Filled automatically" />
-        </Field>
-      </div>
-      {value && (
-        <div className="alert alert-ok small">
-          <span>
-            ✓ <b>{value.name}</b> · {value.niftId} · {value.department} · Semester {value.semester}
+  const pick = (s) => {
+    onChange(s);
+    setText('');
+    setResults([]);
+    setOpen(false);
+    setMsg('');
+  };
+
+  if (value) {
+    return (
+      <Field label={label} required={required}>
+        <div className="person-chip">
+          <span className="avatar" style={{ width: 34, height: 34, fontSize: 13 }}>{value.name.split(' ').map((w) => w[0]).slice(0, 2).join('')}</span>
+          <span className="grow">
+            <div style={{ fontWeight: 600 }}>{value.name}</div>
+            <div className="small muted">{value.niftId} · {value.department} · Sem {value.semester}</div>
           </span>
           <TypeBadge type={value.studentType} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(null)}>Change</button>
         </div>
-      )}
-      {msg && <div className="alert alert-error small">{msg}</div>}
-    </div>
+      </Field>
+    );
+  }
+
+  return (
+    <Field label={label} required={required} help={help}>
+      <div className="lookup" ref={boxRef}>
+        <input
+          className="input"
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            search(e.target.value);
+          }}
+          onFocus={() => results.length && setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (results[0]) pick(results[0]);
+            }
+          }}
+          placeholder="Type a name or NIFT ID…"
+          autoComplete="off"
+          aria-autocomplete="list"
+        />
+        {busy && <span className="lookup-busy spinner" />}
+        {open && results.length > 0 && (
+          <ul className="lookup-list" role="listbox">
+            {results.map((s) => (
+              <li key={s.niftId}>
+                <button type="button" onClick={() => pick(s)}>
+                  <span style={{ fontWeight: 600 }}>{s.name}</span>
+                  <span className="small muted"> · {s.niftId} · {s.department} · Sem {s.semester}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {msg && <div className="alert alert-error small" style={{ marginTop: 6 }}>{msg}</div>}
+    </Field>
   );
 }

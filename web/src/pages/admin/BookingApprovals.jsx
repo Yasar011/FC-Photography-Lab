@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../lib/auth.jsx';
 import { useNow } from '../../lib/hooks.js';
+import { call } from '../../firebase.js';
 import { PageHead } from '../../components/ui.jsx';
 import { useActionDialog } from '../../components/SignApprove.jsx';
 import { AssistantActions, SpecialActions, nextSpecialStep } from '../../components/BookingBits.jsx';
@@ -12,12 +13,12 @@ import { formatDate, formatRange, formatDateTime, todayIST } from '@shared/calen
 
 /**
  * FC Lab Assistant portal:
- *  1. Normal bookings waiting for approval (approve / reject — no printing needed)
- *  2. Special bookings whose form must be printed & issued
- *  3. Approved upcoming bookings (optional print)
+ *  - New bookings (normal bookings are confirmed instantly — check them, cancel if needed)
+ *  - Special bookings whose form must be printed & issued
+ *  - Bookings waiting for approval (only when approval is switched on)
  */
 export default function BookingApprovals() {
-  const { role } = useAuth();
+  const { role, isStaff, rules } = useAuth();
   const now = useNow(60000);
   const today = todayIST(now);
   const pending = useStatusList(STATUS.PENDING_ASSISTANT_APPROVAL);
@@ -26,7 +27,25 @@ export default function BookingApprovals() {
   const [openDialog, dialogNode] = useActionDialog();
 
   const toPrint = special.items.filter((b) => nextSpecialStep(b)?.key === 'fcAssistant');
-  const upcoming = approved.items.filter((b) => b.endAt > now && !b.isSpecial).slice(0, 15);
+  const fresh = approved.items
+    .filter((b) => b.endAt > now && !b.isSpecial)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 20);
+  const showApprovalColumn = pending.items.length > 0 || rules.assistantApproval !== 'none';
+
+  const cancel = (b) =>
+    openDialog({
+      title: `Cancel ${b.id}`,
+      message: `Cancel ${b.studentName}'s booking (${formatDate(b.date, { weekday: true })} · ${formatRange(b.startHour, b.endHour)})? The slot is released and the student is emailed.`,
+      confirmLabel: 'Cancel booking',
+      tone: 'danger',
+      remarks: 'required',
+      remarksLabel: 'Reason (sent to the student)',
+      onConfirm: async (reason) => {
+        await call('cancelBooking', { bookingId: b.id, reason });
+        return 'Booking cancelled';
+      },
+    });
 
   const card = (b, actions, extra) => (
     <div key={b.id} className="bcard">
@@ -39,7 +58,6 @@ export default function BookingApprovals() {
         <div className="small">{formatDate(b.date, { weekday: true })} · {formatRange(b.startHour, b.endHour)} ({b.duration} h)</div>
         <div className="small muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.purpose}</div>
         {b.faculty && <div className="tiny muted">Faculty: {b.faculty.name}</div>}
-        {b.fcApproval?.state === 'APPROVED' && <div className="tiny muted">FC student {b.fcApproval.byName} approved · {formatDateTime(b.fcApproval.at)}</div>}
         {extra}
       </div>
       {actions}
@@ -50,35 +68,38 @@ export default function BookingApprovals() {
     <>
       <PageHead
         eyebrow="FC Lab Assistant"
-        title="Booking approvals"
-        sub="Normal bookings: approve in the portal — no printing needed. Special bookings: print the form and hand it to the student."
+        title="Bookings desk"
+        sub="Normal bookings are confirmed instantly — check new ones and cancel if needed. Special bookings: print the form and hand it to the student."
       >
         <span className="live-dot">Live</span>
       </PageHead>
       <div className="board">
+        {showApprovalColumn && (
+          <div className="board-col">
+            <h3><Icon name="checkCircle" /> Waiting for approval <span className="n">{pending.items.length}</span></h3>
+            <div className="hint">Approval is switched on in Rules & Questions.</div>
+            {pending.items.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>Nothing waiting.</p>}
+            {pending.items.map((b) => card(b, <AssistantActions booking={b} role={role} onDialog={openDialog} compact />))}
+          </div>
+        )}
         <div className="board-col">
-          <h3><Icon name="checkCircle" /> 1 · Approve bookings <span className="n">{pending.items.length}</span></h3>
-          <div className="hint">Student has signed the booking. Approve or reject.</div>
-          {pending.items.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>Nothing waiting.</p>}
-          {pending.items.map((b) => card(b, <AssistantActions booking={b} role={role} onDialog={openDialog} compact />))}
+          <h3><Icon name="calendar" /> New & upcoming bookings <span className="n">{fresh.length}</span></h3>
+          <div className="hint">Newest first. No printing needed.</div>
+          {fresh.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>No upcoming bookings.</p>}
+          {fresh.map((b) => card(b, (
+            <div className="row" style={{ gap: 8 }}>
+              {isStaff && <button className="btn btn-sm btn-danger" onClick={() => cancel(b)}>Cancel</button>}
+              <Link className="btn btn-sm btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Slip (optional)</Link>
+            </div>
+          ), <div className="tiny muted" style={{ marginTop: 4 }}>Booked {formatDateTime(b.createdAt)}{b.bookedByStaff ? ' · by staff' : ''}</div>))}
         </div>
         <div className="board-col">
-          <h3><Icon name="print" /> 2 · Special: print & issue form <span className="n">{toPrint.length}</span></h3>
+          <h3><Icon name="print" /> Special: print & issue form <span className="n">{toPrint.length}</span></h3>
           <div className="hint">After 10 PM · weekend · holiday. Print the form and hand it to the student.</div>
           {toPrint.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>Nothing to print.</p>}
           {toPrint.map((b) => card(b, <SpecialActions booking={b} role={role} onDialog={openDialog} compact />, (
             <div className="tiny" style={{ marginTop: 4, color: 'var(--orange)' }}>{(b.specialReasons || []).join(', ')}</div>
           )))}
-        </div>
-        <div className="board-col">
-          <h3><Icon name="calendar" /> 3 · Approved — upcoming <span className="n">{upcoming.length}</span></h3>
-          <div className="hint">No printing needed. Print a slip only if someone asks for one.</div>
-          {upcoming.length === 0 && <p className="small muted" style={{ padding: '10px 4px' }}>No upcoming bookings.</p>}
-          {upcoming.map((b) => card(b, (
-            <div className="row" style={{ gap: 8 }}>
-              <Link className="btn btn-sm btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Print slip (optional)</Link>
-            </div>
-          ), b.assistantApproval && <div className="tiny muted" style={{ marginTop: 4 }}>Approved by {b.assistantApproval.byName} · {formatDateTime(b.assistantApproval.at)}</div>))}
         </div>
       </div>
       {dialogNode}

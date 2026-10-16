@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { call } from '../firebase.js';
 import { STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
 import { formatDate, formatHour, formatRange, BOOKABLE_STATES, SLOT_LABELS, SLOT } from '@shared/calendar.js';
-import { sortedEntries, maxHoursFor, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
+import { sortedEntries, maxHoursFor, needsAssistantApproval, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
 
 import SignaturePad from './SignaturePad.jsx';
 import PersonLookup from './PersonLookup.jsx';
@@ -27,7 +27,7 @@ export function rangeProblem(daySlotList, start, end) {
   return '';
 }
 
-export default function BookingForm({ student, staffMode, selection, onSelection, dates, slotsByDate, onClose, onBooked }) {
+export default function BookingForm({ student, staffMode, selection, onSelection, dates, slotsByDate, onClose, onBooked, pastFaculty = [] }) {
   const { rules, settings, equipment: equipmentConfig } = useAuth();
   const toast = useToast();
   const bodyRef = useRef(null);
@@ -54,9 +54,11 @@ export default function BookingForm({ student, staffMode, selection, onSelection
     equipment: equipment.some((e) => e.id === 'photoLab') ? ['photoLab'] : [],
     equipmentReasons: {},
     bringOwnAck: false,
-    answers: {},
-    facultyName: '',
-    facultyEmail: '',
+    // Prefill sensible defaults (e.g. number of people = 1).
+    answers: Object.fromEntries(questions.filter((q) => q.defaultValue !== undefined && q.defaultValue !== null).map((q) => [q.id, q.defaultValue])),
+    // Last faculty used is filled in for you.
+    facultyName: pastFaculty[0]?.name || '',
+    facultyEmail: pastFaculty[0]?.email || '',
     remarks: '',
   }));
   const [showFaculty, setShowFaculty] = useState(rules.facultyEmailRequired !== false);
@@ -64,6 +66,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   const [senior, setSenior] = useState(null);
   const [confirmations, setConfirmations] = useState({});
   const [signature, setSignature] = useState('');
+  const [sigDraft, setSigDraft] = useState(''); // used even if “Submit Signature” wasn't pressed
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -100,7 +103,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
     if (form.facultyEmail.trim() && !form.facultyName.trim()) return 'Please enter the subject/faculty name.';
     if (form.facultyEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.facultyEmail.trim())) return 'Please enter a valid faculty email.';
     for (const c of confirmationList) if (c.required && !confirmations[c.id]) return `Please tick: ${c.label}`;
-    if (!signature) return 'Please draw your signature and press “Submit Signature”.';
+    if (!signature && !sigDraft) return 'Please draw your signature in the box.';
     return '';
   }
 
@@ -127,7 +130,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
         fcStudentNiftId: needsFc ? fcStudent?.niftId : undefined,
         seniorNiftId: firstYear ? senior?.niftId : undefined,
         confirmations,
-        signature,
+        signature: signature || sigDraft,
         ...(staffMode ? { onBehalfOfNiftId: student.niftId, remarks: form.remarks.trim() } : {}),
       });
       setResult(r);
@@ -149,7 +152,8 @@ export default function BookingForm({ student, staffMode, selection, onSelection
     );
   }
 
-  const submitLabel = needsFc ? 'Submit for FC approval' : requiresSpecial ? 'Submit for special approval' : 'Book now';
+  const waitsForAssistant = !staffMode && needsAssistantApproval(rules, student.studentType);
+  const submitLabel = needsFc ? 'Submit for FC approval' : requiresSpecial ? 'Submit for special approval' : waitsForAssistant ? 'Send for approval' : 'Book now';
   const hasPeople = firstYear || needsFc;
   let n = 0;
 
@@ -192,6 +196,17 @@ export default function BookingForm({ student, staffMode, selection, onSelection
               {endOptions.map((h) => <option key={h} value={h}>{formatHour(h)} ({h - start} h)</option>)}
             </select>
           </Field>
+        </div>
+        <div className="dur-chips" role="group" aria-label="Duration">
+          {Array.from({ length: maxH }, (_, i) => i + 1).map((h) => {
+            const ok = !rangeProblem(daySlots, start, start + h) || h <= end - start;
+            return (
+              <button key={h} type="button" className={end - start === h ? 'on' : ''} disabled={!ok || start + h > rules.gridEndHour} onClick={() => onSelection({ date, start, end: start + h })}>
+                {h} h
+              </button>
+            );
+          })}
+          <span className="small muted" style={{ alignSelf: 'center' }}>max {maxH} h</span>
         </div>
         {slotError && slotError !== error && <Alert kind="error">{slotError}</Alert>}
         {requiresSpecial && !slotError && (
@@ -254,7 +269,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
             )}
             {needsFc && (
               <div className="stack">
-                <p className="small muted">The FC student must approve this booking from their own account before it is confirmed.</p>
+                <p className="small muted">Type the FC student's name — they approve this booking from their own account.</p>
                 <PersonLookup label="FC student" purpose="fc" required value={fcStudent} onChange={setFcStudent} />
               </div>
             )}
@@ -266,6 +281,20 @@ export default function BookingForm({ student, staffMode, selection, onSelection
         <div className="section-title"><span className="n">{++n}</span> Subject / faculty {rules.facultyEmailRequired ? '' : <span className="tiny" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>(optional)</span>}</div>
         {showFaculty ? (
           <div className="stack">
+            {pastFaculty.length > 0 && (
+              <div className="chips">
+                {pastFaculty.map((f) => (
+                  <button
+                    key={f.email}
+                    type="button"
+                    className={`chip ${form.facultyEmail === f.email ? 'on' : ''}`}
+                    onClick={() => setForm((x) => ({ ...x, facultyName: f.name, facultyEmail: f.email }))}
+                  >
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="grid grid-2">
               <Field label="Faculty name" required={rules.facultyEmailRequired}>
                 <input className="input" value={form.facultyName} onChange={(e) => set('facultyName', e.target.value)} maxLength={120} />
@@ -305,7 +334,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
             </details>
           )}
           <div className="label" style={{ marginTop: 6 }}>Signature — {student.name}{staffMode ? ' (student signs on this device)' : ''}</div>
-          <SignaturePad submitted={Boolean(signature)} onSubmit={setSignature} onClear={() => setSignature('')} />
+          <SignaturePad submitted={Boolean(signature)} onSubmit={setSignature} onDraw={setSigDraft} onClear={() => { setSignature(''); setSigDraft(''); }} />
         </div>
       </section>
     </Drawer>
