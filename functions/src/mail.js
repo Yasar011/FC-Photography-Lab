@@ -1,5 +1,8 @@
-// Email notifications. SMTP credentials live in Secret Manager / function params
-// and never reach the frontend. Every email is logged in /emailLogs.
+// Email notifications. Two ways to send, both server-side only:
+//  • Google Sheet + Apps Script (SHEETS_WEBHOOK_URL set): the script sends the
+//    email from the sheet owner's Gmail and keeps one live row per booking.
+//  • SMTP (SMTP_USER + SMTP_PASS).
+// Every email is logged in /emailLogs.
 import nodemailer from 'nodemailer';
 import { defineSecret, defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions/v2';
@@ -18,6 +21,80 @@ const SMTP_HOST = defineString('SMTP_HOST', { default: 'smtp.gmail.com' });
 const SMTP_PORT = defineString('SMTP_PORT', { default: '465' });
 const SMTP_USER = defineString('SMTP_USER', { default: '' });
 const MAIL_FROM = defineString('MAIL_FROM', { default: '' });
+// Apps Script web app URL + shared secret (functions/.env.<project> — never in the frontend).
+const SHEETS_WEBHOOK_URL = defineString('SHEETS_WEBHOOK_URL', { default: '' });
+const SHEETS_WEBHOOK_SECRET = defineString('SHEETS_WEBHOOK_SECRET', { default: '' });
+
+const sheetsUrl = () => {
+  try {
+    return SHEETS_WEBHOOK_URL.value();
+  } catch {
+    return '';
+  }
+};
+
+/** Booking summary written as one row of the Google Sheet. */
+export function sheetBooking(b) {
+  if (!b) return null;
+  const concern = b.facultyConcern || null;
+  return {
+    id: b.id,
+    status: b.status,
+    statusLabel: STATUS_META[b.status]?.label || b.status,
+    student: b.studentName,
+    email: b.email,
+    niftId: b.niftId,
+    department: b.department,
+    semester: b.semester,
+    studentType: STUDENT_TYPE_LABELS[b.studentType] || b.studentType,
+    date: b.date,
+    time: formatRange(b.startHour, b.endHour),
+    hours: b.duration,
+    purpose: b.purpose,
+    equipment: (b.equipmentList || []).join(', '),
+    special: b.isSpecial ? (b.specialReasons || []).join(', ') || 'Yes' : '',
+    facultyName: b.faculty?.name || '',
+    facultyEmail: b.faculty?.email || '',
+    fcStudent: b.fcStudent ? `${b.fcStudent.name} (${b.fcStudent.niftId})` : '',
+    // Faculty pressed "I DID NOT APPROVE THIS" → the row turns red in the sheet.
+    facultySaidNo: Boolean(concern),
+    facultyConcernOpen: Boolean(concern && !concern.resolved),
+    facultyRemarks: concern?.remarks || '',
+    approvedBy: b.fcccApproval?.byName || '',
+    link: appLink(`/bookings/${b.id}`),
+    createdAt: b.createdAt || null,
+    updatedAt: Date.now(),
+  };
+}
+
+/** POST to the Apps Script web app. Throws on any error. */
+async function postToSheet(payload) {
+  const res = await fetch(sheetsUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script reads e.postData.contents
+    body: JSON.stringify({ secret: SHEETS_WEBHOOK_SECRET.value(), ...payload }),
+    redirect: 'follow',
+  });
+  const text = await res.text();
+  let out;
+  try {
+    out = JSON.parse(text);
+  } catch {
+    throw new Error(`Apps Script replied ${res.status}: ${text.slice(0, 200)}`);
+  }
+  if (!out.ok) throw new Error(out.error || 'Apps Script error');
+  return out;
+}
+
+/** Update a booking's row in the Google Sheet (for changes that send no email). Never throws. */
+export async function syncSheetBooking(b) {
+  if (!sheetsUrl() || !b) return;
+  try {
+    await postToSheet({ action: 'booking', booking: sheetBooking(b) });
+  } catch (err) {
+    logger.error('Google Sheet sync failed', { bookingId: b.id, err: err.message });
+  }
+}
 
 let transport;
 function getTransport() {
@@ -134,9 +211,27 @@ export async function sendEmail({ type, to, subject, bookingId = null, trigger, 
     return;
   }
   await logRef.set(log);
+
+  // Google Sheet + Apps Script: sends the email and refreshes the booking's row.
+  if (sheetsUrl()) {
+    try {
+      const b = bookingId ? (await db.ref(`bookings/${bookingId}`).get()).val() : null;
+      await postToSheet({
+        action: 'mail',
+        mail: { type, to: recipients, subject, html: renderEmail(content), text: textVersion(content) },
+        booking: sheetBooking(b),
+      });
+      await logRef.update({ status: 'sent', via: 'google-sheets', updatedAt: TS });
+    } catch (err) {
+      logger.error('Email via Google Sheet failed', { type, bookingId, err: err.message });
+      await logRef.update({ status: 'failed', via: 'google-sheets', error: String(err.message).slice(0, 500), updatedAt: TS });
+    }
+    return;
+  }
+
   const t = getTransport();
   if (!t) {
-    await logRef.update({ status: 'not-configured', error: 'SMTP is not configured', updatedAt: TS });
+    await logRef.update({ status: 'not-configured', error: 'Email is not configured (Google Sheet or SMTP)', updatedAt: TS });
     logger.warn('SMTP not configured; email not sent', { type, bookingId });
     return;
   }

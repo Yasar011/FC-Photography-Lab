@@ -5,7 +5,7 @@ import { logger } from 'firebase-functions/v2';
 import { db, loadSettings, auditEntry, SYSTEM_ACTOR, TS } from './core.js';
 import { addHistory, mutateBooking, syncSlots } from './bookingCore.js';
 import { STATUS, ACCOUNT_STATUS, TIMEZONE, PENDING_STATUSES, FC_APPROVAL_STATE, niftKey } from '../shared/constants.js';
-import { SMTP_PASS, sendAll } from './mail.js';
+import { SMTP_PASS, sendAll, syncSheetBooking } from './mail.js';
 import * as N from './notify.js';
 import { dueProgressionEvents, progressStudent, PROGRESSION_LABELS, runKey } from '../shared/academic.js';
 import { todayIST } from '../shared/calendar.js';
@@ -131,6 +131,7 @@ export const completeBookings = onSchedule(
           return addHistory(b, { event: 'COMPLETED', actor: SYSTEM_ACTOR });
         });
         await syncSlots(after);
+        await syncSheetBooking(after);
         const [ap, av] = auditEntry(SYSTEM_ACTOR, 'BOOKING_COMPLETED', { bookingId: id, niftId: after.niftId });
         await db.ref(ap).set(av);
       } catch (err) {

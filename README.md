@@ -125,6 +125,8 @@ firebase functions:secrets:set SMTP_PASS
 ```
 The secret has to exist before deploying. If email isn't ready yet, set a placeholder value. Emails are then logged as `not-configured` and nothing else is affected.
 
+**Easier option: email through Google Sheets (Apps Script).** You don't need an SMTP password. All emails are sent from the Google account that owns the sheet, and the sheet keeps one live row per booking. A row turns red when the faculty says "I DID NOT APPROVE THIS". Setup: [apps-script/README.md](apps-script/README.md). Then add `SHEETS_WEBHOOK_URL` and `SHEETS_WEBHOOK_SECRET` to `functions/.env.<project-id>`.
+
 ### 3. Deploy
 ```bash
 cd functions && npm install && npm test && cd ..

@@ -10,7 +10,7 @@ const DEMO_ENV = {
 };
 
 export function defineString(name, opts = {}) {
-  return { value: () => (name === 'APP_URL' ? base() : DEMO_ENV[name] ?? opts.default ?? '') };
+  return { value: () => (name === 'APP_URL' ? base() : globalThis.__DEMO_ENV__?.[name] ?? DEMO_ENV[name] ?? opts.default ?? '') };
 }
 
 export function defineSecret() {
