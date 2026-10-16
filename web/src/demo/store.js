@@ -1,8 +1,8 @@
 // Singletons shared by the demo "client" and the demo "server".
 import { MemoryDB } from './memdb.js';
 
-export const DB_KEY = 'fc-demo-db-v8';
-export const FILES_KEY = 'fc-demo-files-v8';
+export const DB_KEY = 'fc-demo-db-v9';
+export const FILES_KEY = 'fc-demo-files-v9';
 export const store = new MemoryDB(DB_KEY);
 
 // Tiny file store standing in for Cloud Storage (signature PNGs).
