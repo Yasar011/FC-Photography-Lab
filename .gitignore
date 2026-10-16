@@ -13,3 +13,7 @@ web/dist-demo/
 web/dist-vercel/
 .vercel/
 .claude/
+.vercel
+.env*
+# keep the documented templates
+!**/.env.example
