@@ -52,8 +52,9 @@ import {
   todayIST,
   bookingIdFor,
   formatRange,
+  formatDateTime,
 } from '../shared/calendar.js';
-import { sortedEntries, maxHoursFor } from '../shared/defaults.js';
+import { sortedEntries, maxHoursFor, activeBookingBlock } from '../shared/defaults.js';
 
 export const CALL_OPTS = { secrets: [SMTP_PASS] };
 
@@ -112,6 +113,10 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     if (!actor.profile?.niftId) fail('failed-precondition', 'Please complete your registration first.');
     studentUid = actor.uid;
     student = actor.profile;
+  }
+  const recentCancel = activeBookingBlock(student);
+  if (recentCancel && !staffBooking) {
+    fail('failed-precondition', `As you cancelled booking ${recentCancel.bookingId}, you can't book until ${formatDateTime(recentCancel.until)}.`);
   }
   const blocked = accountBlockReason(student);
   if (blocked) fail('failed-precondition', blocked);
@@ -454,13 +459,22 @@ export const cancelBooking = onCall(CALL_OPTS, async (request) => {
   }
   const [ap, av] = auditEntry(by, 'BOOKING_CANCELLED', { bookingId: after.id, niftId: after.niftId, details: { status: after.status, reason } });
   updates[ap] = av;
+  // Cancelling your own booking blocks new bookings for a few days.
+  const cooldownDays = Number(settings.bookingRules.cancelCooldownDays) || 0;
+  let blockedUntil = null;
+  if (after.status === STATUS.CANCELLED_BY_STUDENT && cooldownDays > 0) {
+    blockedUntil = Date.now() + cooldownDays * 86400000;
+    updates[`users/${after.studentUid}/bookingBlock`] = { until: blockedUntil, bookingId: after.id, at: Date.now(), days: cooldownDays };
+    const [bp, bv] = auditEntry(by, 'BOOKING_BLOCK_STARTED', { bookingId: after.id, niftId: after.niftId, details: { until: blockedUntil, days: cooldownDays } });
+    updates[bp] = bv;
+  }
   await db.ref().update(updates);
 
   const byLabel = after.status === STATUS.CANCELLED_BY_STUDENT ? 'the student' : `FC Staff (${actor.name})`;
   const to = [after.email];
   if (after.fcStudent?.email && updates[`fcApprovals/${after.fcApprovalId}/state`]) to.push(after.fcStudent.email);
-  await sendAll([N.cancelledEmail(after, to, byLabel, reason)]);
-  return { status: after.status };
+  await sendAll([N.cancelledEmail(after, to, byLabel, reason, blockedUntil)]);
+  return { status: after.status, blockedUntil };
 });
 
 // ---- Admin decisions (approve / reject a regular booking) ----------------------

@@ -1,5 +1,6 @@
 // Email content for every booking event (official, plain).
 import { appLink, bookingRows } from './mail.js';
+import { formatDateTime } from '../shared/calendar.js';
 import { specialStepsFor, specialInstructionsFor, ADMIN_GUARD_NOTE, STATUS } from '../shared/constants.js';
 
 const bookingLink = (b) => ({ label: 'View booking', url: appLink(`/bookings/${b.id}`) });
@@ -206,7 +207,7 @@ export function rejectedEmail(b, reason) {
   };
 }
 
-export function cancelledEmail(b, to, byLabel, reason) {
+export function cancelledEmail(b, to, byLabel, reason, blockedUntil = null) {
   return {
     type: 'booking_cancelled',
     to,
@@ -215,7 +216,10 @@ export function cancelledEmail(b, to, byLabel, reason) {
     trigger: 'booking.cancelled',
     content: {
       heading: 'Booking cancelled',
-      intro: [`This Photography Lab booking was cancelled by ${byLabel}.`],
+      intro: [
+        `This Photography Lab booking was cancelled by ${byLabel}.`,
+        ...(blockedUntil ? [`As you cancelled this booking, you can't make a new booking until ${formatDateTime(blockedUntil)}.`] : []),
+      ],
       rows: bookingRows(b),
       extraRows: [['Reason', reason || 'Not provided']],
       action: bookingLink(b),

@@ -6,10 +6,10 @@ import { useAuth } from '../lib/auth.jsx';
 import { useLive, dbQuery, useNow } from '../lib/hooks.js';
 import { useMyBookings, isUpcoming } from '../lib/bookings.js';
 import { STATUS_META, ACCOUNT_STATUS } from '@shared/constants.js';
-import { bookingWindow, datesBetween, addDays, formatDate, formatRange, BOOKABLE_STATES, todayIST } from '@shared/calendar.js';
+import { bookingWindow, datesBetween, addDays, formatDate, formatRange, formatDateTime, BOOKABLE_STATES, todayIST } from '@shared/calendar.js';
 
 import { useSlotRange, daySlots } from './Calendar.jsx';
-import { maxHoursFor } from '@shared/defaults.js';
+import { maxHoursFor, activeBookingBlock } from '@shared/defaults.js';
 import TimeGrid from './cal/TimeGrid.jsx';
 import MiniMonth from './cal/MiniMonth.jsx';
 import { Popover } from './cal/Overlays.jsx';
@@ -113,7 +113,9 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
   };
 
   const canSelect = (s) => BOOKABLE_STATES.includes(s.state);
-  const inactive = student.status !== ACCOUNT_STATUS.ACTIVE || student.bookingAccess === false;
+  // Cancelled a booking recently → can't book for a few days (staff can still book for them).
+  const cancelBlock = staffMode ? null : activeBookingBlock(student, now);
+  const inactive = student.status !== ACCOUNT_STATUS.ACTIVE || student.bookingAccess === false || Boolean(cancelBlock);
   const maxH = maxHoursFor(rules, student.studentType); // FC students 4 h, others 3 h
 
   const firstFree = () => {
@@ -187,7 +189,9 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
         {inactive && (
           <div style={{ marginBottom: 12 }}>
             <Alert kind="error">
-              {student.status === ACCOUNT_STATUS.GRADUATED
+              {cancelBlock
+                ? <span><b>As you cancelled booking {cancelBlock.bookingId}, you can't book until {formatDateTime(cancelBlock.until)}.</b> You can still see the calendar.</span>
+                : student.status === ACCOUNT_STATUS.GRADUATED
                 ? 'Graduated students cannot create new bookings. Your previous bookings remain in My bookings.'
                 : 'Booking access is disabled for this account. Please contact the FC Staff.'}
             </Alert>

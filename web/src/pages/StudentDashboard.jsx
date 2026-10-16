@@ -6,8 +6,9 @@ import { useMyBookings, useMyFcApprovals, isUpcoming } from '../lib/bookings.js'
 import { StatusBadge, Alert, Empty } from '../components/ui.jsx';
 import { nextSpecialStep } from '../components/BookingBits.jsx';
 import Icon from '../components/Icon.jsx';
-import { formatRange, formatHour, istParts, dayOfWeek, DAY_NAMES, bookingWindow, datesBetween, addDays, todayIST, SLOT } from '@shared/calendar.js';
+import { formatRange, formatHour, formatDateTime, istParts, dayOfWeek, DAY_NAMES, bookingWindow, datesBetween, addDays, todayIST, SLOT } from '@shared/calendar.js';
 import { useSlotRange, daySlots } from '../components/Calendar.jsx';
+import { activeBookingBlock } from '@shared/defaults.js';
 import { ACCOUNT_STATUS, FC_APPROVAL_STATE, STATUS_META } from '@shared/constants.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -26,6 +27,7 @@ export default function StudentDashboard() {
   const hour = istParts(now).hour;
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const active = profile.status === ACCOUNT_STATUS.ACTIVE;
+  const cancelBlock = activeBookingBlock(profile, now);
 
   return (
     <div className="stack-lg" style={{ maxWidth: 1080 }}>
@@ -65,7 +67,12 @@ export default function StudentDashboard() {
         );
       })}
 
-      {active && <QuickBook />}
+      {active && cancelBlock && (
+        <Alert kind="error">
+          <span><b>As you cancelled booking {cancelBlock.bookingId}, you can't book until {formatDateTime(cancelBlock.until)}.</b> Your other bookings are not affected.</span>
+        </Alert>
+      )}
+      {active && !cancelBlock && <QuickBook />}
 
       <div className="grid grid-4">
         <Link to="/book" className="tile primary">

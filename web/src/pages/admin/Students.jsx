@@ -93,6 +93,30 @@ export default function Students() {
   );
 }
 
+function LiftBlock({ niftId }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      className="btn btn-sm"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await call('updateStudent', { niftId, clearBookingBlock: true, remarks: 'Booking block lifted by staff' });
+          toast('Student can book again', 'ok');
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      Allow booking now
+    </button>
+  );
+}
+
 function ViewStudent({ student: u, onClose, onEdit }) {
   const { items } = useMyBookings(u.uid);
   const q = dbQuery('auditLogs', orderByChild('niftId'), equalTo(u.niftId));
@@ -107,6 +131,15 @@ function ViewStudent({ student: u, onClose, onEdit }) {
         <dt>Student type</dt><dd><TypeBadge type={u.studentType} /></dd>
         <dt>Status</dt><dd><AccountBadge status={u.status} /> {u.bookingAccess === false && <span className="small muted">booking access disabled</span>}</dd>
         <dt>Registered</dt><dd>{formatDateTime(u.createdAt)}</dd>
+        {u.bookingBlock?.until > Date.now() && (
+          <>
+            <dt>Booking blocked</dt>
+            <dd>
+              Until {formatDateTime(u.bookingBlock.until)} (cancelled {u.bookingBlock.bookingId}){' '}
+              <LiftBlock niftId={u.niftId} />
+            </dd>
+          </>
+        )}
         {u.graduatedAt && <><dt>Graduated</dt><dd>{formatDateTime(u.graduatedAt)}</dd></>}
       </dl>
       <h3>Bookings ({items.length})</h3>

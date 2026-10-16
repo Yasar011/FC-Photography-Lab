@@ -51,6 +51,8 @@ export const DEFAULT_BOOKING_RULES = {
   facultyEmailDomains: ['nift.ac.in'],
 
   studentCanCancel: true,
+  // A student who cancels their own booking can't book again for this many days (0 = off).
+  cancelCooldownDays: 4,
 
 
 };
@@ -114,6 +116,7 @@ export const DEFAULT_INSTRUCTIONS = {
     '• Maximum 4 hours per booking for FC students, 3 hours for other students.\n' +
     '• Weekday 9 AM–5 PM is reserved for CLS classes unless opened by FC staff.\n' +
     '• Bookings after 10 PM, on weekends or on holidays need special approval.\n' +
+    '• If you cancel a booking, you cannot make a new booking for 4 days.\n' +
     '• Carry your NIFT ID card. Report any equipment issue to the FC staff immediately.',
 };
 
@@ -138,6 +141,12 @@ export const DEFAULT_SETTINGS = {
 export function maxHoursFor(rules, studentType) {
   const r = withRuleDefaults(rules);
   return studentType === 'FC_STUDENT' || studentType === 'FC_IDM_STUDENT' ? r.fcMaxDurationHours : r.maxDurationHours;
+}
+
+/** Active "cancelled recently" block on a student profile, or null. */
+export function activeBookingBlock(profile, nowMs = Date.now()) {
+  const block = profile?.bookingBlock;
+  return block?.until && block.until > nowMs ? block : null;
 }
 
 export function withRuleDefaults(rules) {

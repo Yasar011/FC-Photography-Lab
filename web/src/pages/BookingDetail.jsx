@@ -31,9 +31,16 @@ export default function BookingDetail() {
 
   const open = {
     cancel: () => ask({
-      title: 'Cancel booking', message: `Cancel ${b.id}? The slot is released for other students.`, confirmLabel: 'Cancel booking', tone: 'danger',
+      title: 'Cancel booking',
+      message: isOwner && Number(rules.cancelCooldownDays) > 0
+        ? <span>Cancel {b.id}? The slot is released for other students. <b>If you cancel, you can't make a new booking for {rules.cancelCooldownDays} days (until {formatDateTime(Date.now() + rules.cancelCooldownDays * 86400000)}).</b></span>
+        : `Cancel ${b.id}? The slot is released for other students.`,
+      confirmLabel: 'Cancel booking', tone: 'danger',
       remarks: isOwner ? 'optional' : 'required', remarksLabel: 'Reason',
-      onConfirm: async (reason) => { await call('cancelBooking', { bookingId: b.id, reason }); return 'Booking cancelled'; },
+      onConfirm: async (reason) => {
+        const r = await call('cancelBooking', { bookingId: b.id, reason });
+        return r.blockedUntil ? `Booking cancelled — you can book again from ${formatDateTime(r.blockedUntil)}` : 'Booking cancelled';
+      },
     }),
     reject: () => ask({
       title: 'Reject booking', message: 'The student is notified and the slot released.', confirmLabel: 'Reject', tone: 'danger', remarks: 'required', remarksLabel: 'Reason',

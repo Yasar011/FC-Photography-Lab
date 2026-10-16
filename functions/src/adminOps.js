@@ -221,14 +221,19 @@ export const updateStudent = onCall(async (request) => {
 
   const changes = {};
   for (const k of Object.keys(next)) if (next[k] !== user[k]) changes[k] = { from: user[k] ?? null, to: next[k] };
+  const liftBlock = d.clearBookingBlock === true && Boolean(user.bookingBlock);
+  if (liftBlock) changes.bookingBlock = { from: user.bookingBlock.until, to: null };
   if (!Object.keys(changes).length) return { ok: true, changed: false };
 
   const by = actorRef(actor);
   const updates = {};
   for (const [k, v] of Object.entries(next)) updates[`users/${reg.uid}/${k}`] = v;
   updates[`users/${reg.uid}/updatedAt`] = TS;
+  if (liftBlock) updates[`users/${reg.uid}/bookingBlock`] = null;
   for (const k of ['name', 'department', 'semester', 'studentType', 'status']) updates[`students/${key}/${k}`] = next[k];
-  const action = changes.studentType
+  const action = liftBlock && Object.keys(changes).length === 1
+    ? 'BOOKING_BLOCK_LIFTED'
+    : changes.studentType
     ? 'STUDENT_CLASSIFICATION_CHANGED'
     : changes.status?.to === ACCOUNT_STATUS.GRADUATED
       ? 'GRADUATION'
@@ -345,6 +350,7 @@ const SETTINGS_VALIDATORS = {
         .map((x) => str(x, 60).toLowerCase())
         .filter(Boolean),
       studentCanCancel: v.studentCanCancel === true,
+      cancelCooldownDays: intIn(v.cancelCooldownDays ?? 4, 0, 30, 'Days blocked after cancelling'),
     };
     if (r.gridEndHour <= r.gridStartHour) fail('invalid-argument', 'Calendar end must be after start.');
     if (r.classEndHour <= r.classStartHour) fail('invalid-argument', 'Class end must be after class start.');

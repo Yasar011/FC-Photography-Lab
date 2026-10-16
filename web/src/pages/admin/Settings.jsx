@@ -144,6 +144,11 @@ function RulesEditor() {
         </div>
         <div className="card-body" style={{ paddingTop: 0 }}>
           <label className="check"><input type="checkbox" checked={r.studentCanCancel} onChange={bool('studentCanCancel')} /> Students may cancel their own bookings before the start time</label>
+          <div style={{ marginTop: 12, maxWidth: 360 }}>
+            <Field label="Days blocked after a student cancels" help="The student can't book again for this many days (0 = no block).">
+              <input className="input" type="number" min={0} max={30} value={r.cancelCooldownDays ?? 4} onChange={num('cancelCooldownDays')} />
+            </Field>
+          </div>
         </div>
       </section>
       <section className="card">
