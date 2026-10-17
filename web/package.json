@@ -10,7 +10,8 @@
     "demo": "vite --mode demo",
     "build:demo": "vite build --mode demo",
     "preview:demo": "vite preview --mode demo --outDir dist-demo --port 4174",
-    "build:vercel": "node scripts/vercel-build.mjs"
+    "build:vercel": "node scripts/vercel-build.mjs",
+    "test:logic": "node scripts/logic-test.mjs"
   },
   "dependencies": {
     "buffer": "^6.0.3",

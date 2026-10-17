@@ -9,30 +9,11 @@ import { STATUS, SLOT_HOLDING_STATUSES } from '@shared/constants.js';
 
 const call = (name, data, uid) => demoCall(name, data, { as: accountByUid(uid), latency: 0 });
 
-function signature(name) {
-  const c = document.createElement('canvas');
-  c.width = 640;
-  c.height = 160;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, c.width, c.height);
-  ctx.strokeStyle = '#111';
-  ctx.fillStyle = '#111';
-  ctx.lineWidth = 2.4;
-  ctx.font = 'italic 46px "Segoe Script", "Brush Script MT", "Lucida Handwriting", cursive';
-  ctx.fillText(name, 28, 98);
-  ctx.beginPath();
-  ctx.moveTo(30, 120);
-  for (let x = 30; x < 420; x += 12) ctx.lineTo(x, 118 + Math.sin(x / 14) * 5);
-  ctx.stroke();
-  return c.toDataURL('image/png');
-}
-
 const CONFIRM = { c_agree: true };
 const FACULTY = { facultyName: 'Dr. Anjali Rao', facultyEmail: 'anjali.rao@nift.ac.in' };
 const FACULTY2 = { facultyName: 'Prof. Sunil Mathur', facultyEmail: 'sunil.mathur@nift.ac.in' };
 
-function booking(name, date, startHour, endHour, purpose, equipment, extra = {}) {
+function booking(_name, date, startHour, endHour, purpose, equipment, extra = {}) {
   return {
     date,
     startHour,
@@ -41,7 +22,7 @@ function booking(name, date, startHour, endHour, purpose, equipment, extra = {})
     equipment,
     answers: { q_project: extra.project || 'Portfolio', q_team: extra.team || 2 },
     confirmations: CONFIRM,
-    signature: signature(name),
+    signDigitally: true, // "I sign this booking digitally"
     ...FACULTY, // subject / faculty is mandatory
     ...extra,
   };
@@ -88,8 +69,6 @@ async function seed() {
   await call('setAdminRole', { email: 'prakash.choudhary@nift.ac.in', role: 'staff' }, 'demo-main');
   await call('setAdminRole', { email: 'meera.iyer@nift.ac.in', role: 'fccc' }, 'demo-main');
   for (const uid of ['demo-staff', 'demo-fccc']) await call('syncAccount', {}, uid);
-  // FC-CC's saved approval signature (stamped onto everything she approves).
-  await call('saveMySignature', { signature: signature('Meera Iyer') }, 'demo-fccc');
 
   // ---- Students register exactly as they would on first login ----
   const students = ['demo-fc', 'demo-fc2', 'demo-fc3', 'demo-other', 'demo-fd', 'demo-ad', 'demo-mfm', 'demo-idm', 'demo-first', 'demo-td', 'demo-grad'];

@@ -5,7 +5,8 @@ import { useAuth } from '../lib/auth.jsx';
 import { useLive } from '../lib/hooks.js';
 import { Loading, Alert } from '../components/ui.jsx';
 import { useActionDialog } from '../components/SignApprove.jsx';
-import { SpecialActions, FcccActions, useBookingSignatures, signatureEntries, handlingNotes } from '../components/BookingBits.jsx';
+import { SpecialActions, FcccActions, useBookingSignatures, signatureEntries, handlingNotes, hasStoredSignatures } from '../components/BookingBits.jsx';
+import { DigitalStamp } from '../components/SignApprove.jsx';
 import Icon from '../components/Icon.jsx';
 import { STATUS_META, STUDENT_TYPE_LABELS, ADMIN_GUARD_NOTE, specialStepsFor } from '@shared/constants.js';
 import { formatDate, formatRange, formatDateTime } from '@shared/calendar.js';
@@ -25,7 +26,7 @@ export default function PrintSheet() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState('');
   const version = b ? JSON.stringify([b.special?.steps, b.fcccApproval, b.fcApproval?.state]) : '';
-  const { sigs } = useBookingSignatures(bookingId, version);
+  const { sigs } = useBookingSignatures(bookingId, version, hasStoredSignatures(b));
 
   // A4 PDF of the sheet — works even where the browser print dialog is blocked.
   const downloadPdf = async () => {
@@ -133,7 +134,9 @@ export default function PrintSheet() {
             <div key={e.key}>
               <span className="step">{i + 1} · {e.role}</span>
               {e.approved && <span className="print-stamp">APPROVED</span>}
-              {e.img ? (
+              {e.stamp ? (
+                <DigitalStamp sig={e.stamp} />
+              ) : e.img ? (
                 <img src={e.img} alt={`${e.role} signature`} />
               ) : (
                 <span style={{ fontSize: 11.5, color: '#555' }}>

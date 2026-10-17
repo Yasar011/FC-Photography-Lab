@@ -7,7 +7,7 @@ import { STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE } from '@share
 import { formatDate, formatHour, formatRange, BOOKABLE_STATES, SLOT_LABELS, SLOT } from '@shared/calendar.js';
 import { sortedEntries, maxHoursFor, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
 
-import SignaturePad from './SignaturePad.jsx';
+import { DigitalStamp } from './SignApprove.jsx';
 import PersonLookup from './PersonLookup.jsx';
 import Icon from './Icon.jsx';
 import { Alert, Field, StatusBadge, useToast } from './ui.jsx';
@@ -66,8 +66,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   const [fcStudent, setFcStudent] = useState(null);
   const [senior, setSenior] = useState(null);
   const [confirmations, setConfirmations] = useState({});
-  const [signature, setSignature] = useState('');
-  const [sigDraft, setSigDraft] = useState(''); // used even if “Submit Signature” wasn't pressed
+  const [signed, setSigned] = useState(false); // digital signature = explicit consent
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -102,7 +101,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
     if (form.facultyEmail.trim() && !form.facultyName.trim()) return 'Please enter the subject/faculty name.';
     if (form.facultyEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.facultyEmail.trim())) return 'Please enter a valid faculty email.';
     for (const c of confirmationList) if (c.required && !confirmations[c.id]) return `Please tick: ${c.label}`;
-    if (!signature && !sigDraft) return 'Please draw your signature in the box.';
+    if (!signed) return 'Please tick “I sign this booking digitally”.';
     return '';
   }
 
@@ -128,7 +127,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
         fcStudentNiftId: needsFc ? fcStudent?.niftId : undefined,
         seniorNiftId: firstYear ? senior?.niftId : undefined,
         confirmations,
-        signature: signature || sigDraft,
+        signDigitally: signed,
         ...(staffMode ? { onBehalfOfNiftId: student.niftId, remarks: form.remarks.trim() } : {}),
       });
       setResult(r);
@@ -321,8 +320,12 @@ export default function BookingForm({ student, staffMode, selection, onSelection
               <div className="declaration" style={{ marginTop: 8 }}>{settings.instructions.text}</div>
             </details>
           )}
-          <div className="label" style={{ marginTop: 6 }}>Signature — {student.name}{staffMode ? ' (student signs on this device)' : ''}</div>
-          <SignaturePad submitted={Boolean(signature)} onSubmit={setSignature} onDraw={setSigDraft} onClear={() => { setSignature(''); setSigDraft(''); }} />
+          <div className="label" style={{ marginTop: 6 }}>Digital signature{staffMode ? ' (the student confirms at the counter)' : ''}</div>
+          <label className="check sign-check">
+            <input type="checkbox" checked={signed} onChange={(e) => setSigned(e.target.checked)} />
+            <b>I, {student.name} ({student.niftId}), sign this booking digitally.</b>
+          </label>
+          {signed && <DigitalStamp sig={{ name: student.name, id: student.niftId, role: 'Student' }} preview />}
         </div>
       </section>
     </Drawer>

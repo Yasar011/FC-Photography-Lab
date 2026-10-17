@@ -231,6 +231,8 @@ export const updateStudent = onCall(async (request) => {
   updates[`users/${reg.uid}/updatedAt`] = TS;
   if (liftBlock) updates[`users/${reg.uid}/bookingBlock`] = null;
   for (const k of ['name', 'department', 'semester', 'studentType', 'status']) updates[`students/${key}/${k}`] = next[k];
+  updates[`students/${key}/email`] = user.email || null;
+  updates[`students/${key}/bookingAccess`] = next.bookingAccess ?? user.bookingAccess ?? true;
   const action = liftBlock && Object.keys(changes).length === 1
     ? 'BOOKING_BLOCK_LIFTED'
     : changes.studentType

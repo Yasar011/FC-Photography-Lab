@@ -65,16 +65,14 @@ export async function mutateBooking(id, mutate) {
 /** Keep /bookingSlots in step with the booking's status (release on reject/cancel). */
 export async function syncSlots(b) {
   const hold = SLOT_HOLDING_STATUSES.includes(b.status);
-  await db.ref(`bookingSlots/${b.date}`).transaction((cur) => {
-    if (cur === null) return null;
-    for (const h of hoursOf(b)) {
-      const k = slotKey(h);
-      if (cur[k]?.bookingId !== b.id) continue;
-      if (hold) cur[k].status = b.status;
-      else delete cur[k];
-    }
-    return cur;
-  });
+  const day = (await db.ref(`bookingSlots/${b.date}`).get()).val() || {};
+  const updates = {};
+  for (const h of hoursOf(b)) {
+    const k = slotKey(h);
+    if (day[k]?.bookingId !== b.id) continue; // never touch another booking's hour
+    updates[`bookingSlots/${b.date}/${k}${hold ? '/status' : ''}`] = hold ? b.status : null;
+  }
+  if (Object.keys(updates).length) await db.ref().update(updates);
 }
 
 /** Write an /approvals log record + audit entry in one update. */
@@ -103,8 +101,13 @@ export async function findStudent(niftId) {
   if (!id) return null;
   const reg = (await db.ref(`students/${niftKey(id)}`).get()).val();
   if (!reg?.uid) return null;
-  const user = (await db.ref(`users/${reg.uid}`).get()).val();
-  if (!user) return null;
+  let user = null;
+  try {
+    user = (await db.ref(`users/${reg.uid}`).get()).val(); // admins
+  } catch {
+    user = null; // students can't read other students' profiles — the registry has what is needed
+  }
+  if (!user) user = { uid: reg.uid, bookingAccess: true, ...reg };
   return { uid: reg.uid, user };
 }
 

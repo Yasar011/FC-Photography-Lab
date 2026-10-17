@@ -7,7 +7,6 @@ import { useLive, dbQuery } from '../lib/hooks.js';
 import { ROLE_LABELS, STATUS, STUDENT_TYPE_LABELS, FC_APPROVAL_STATE } from '@shared/constants.js';
 import { Camera } from './ui.jsx';
 import Icon, { PlusColor } from './Icon.jsx';
-import { MySignatureModal } from './SignApprove.jsx';
 
 function useCount(path, child, value, enabled) {
   const q = enabled ? dbQuery(path, orderByChild(child), equalTo(value)) : null;
@@ -32,7 +31,6 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menu, setMenu] = useState(false);
-  const [sigOpen, setSigOpen] = useState(false);
   const menuRef = useRef(null);
   const location = useLocation();
   useEffect(() => {
@@ -85,7 +83,6 @@ export default function Layout() {
               {profile?.niftId && <div className="small mono">{profile.niftId} · {profile.department} · Sem {profile.semester}</div>}
               <div className="row" style={{ marginTop: 10, justifyContent: 'center' }}>
                 {isStudent && <Link className="btn btn-sm" to="/profile">Profile</Link>}
-                {isAdmin && <button className="btn btn-sm" onClick={() => { setSigOpen(true); setMenu(false); }}><Icon name="stamp" /> My signature</button>}
                 <button className="btn btn-sm" onClick={signOut}><Icon name="logout" /> Sign out</button>
               </div>
             </div>
@@ -143,7 +140,6 @@ export default function Layout() {
           </main>
         </div>
       </div>
-      {sigOpen && <MySignatureModal onClose={() => setSigOpen(false)} />}
     </>
   );
 }

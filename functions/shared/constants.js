@@ -223,3 +223,21 @@ export function isValidSemester(department, semester) {
 export function isPhone(phone) {
   return /^[+]?[0-9][0-9\s-]{8,15}$/.test(String(phone || '').trim());
 }
+
+// ---- Digital signatures (text stamps — no images are stored) ----------------
+export const SIGN_ORG = 'FPL-NJ'; // FC Photography Lab · NIFT Jodhpur
+
+/** Short verification code for a signature (same input → same code). */
+export function signCode(...parts) {
+  let h = 0x811c9dc5; // FNV-1a
+  for (const ch of parts.join('|')) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).toUpperCase().padStart(8, '0');
+}
+
+/** A digital signature record: who, as what, when, and its code. */
+export function digitalSignature({ name, id = null, role, at, ref }) {
+  return { digital: true, name, id, role, at, code: `${SIGN_ORG}-${signCode(ref, name, id, role, at)}` };
+}

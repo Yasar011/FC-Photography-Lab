@@ -4,6 +4,7 @@ import Icon from './Icon.jsx';
 import { SPECIAL_STEPS, STATUS, STUDENT_TYPE_LABELS, APPROVER_ROLES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
 import { formatDate, formatDateTime, formatRange } from '@shared/calendar.js';
 import { call } from '../firebase.js';
+import { DigitalStamp } from './SignApprove.jsx';
 
 export function HistoryTimeline({ history }) {
   const entries = Object.values(history || {}).sort((a, b) => a.at - b.at);
@@ -154,9 +155,8 @@ export function SpecialActions({ booking, role, onDialog, compact = false, hideP
             title: 'Approve & sign — special booking',
             message: `Check the paper form for ${booking.id} (${booking.studentName}) has been signed by: ${specialStepsFor(booking.studentType).filter((x) => x.paper && x.signs).map((x) => x.label).join(', ')}. Your digital signature and “APPROVED” are added, and the student then gives the form to the Admin Guard.`,
             confirmLabel: 'Sign & approve',
-            allowDocument: true,
-            onConfirm: async ({ signature, remarks, document }) => {
-              await call('specialApprovalStep', { bookingId: booking.id, step: 'final', decision: 'approve', signature, remarks, document });
+            onConfirm: async ({ remarks }) => {
+              await call('specialApprovalStep', { bookingId: booking.id, step: 'final', decision: 'approve', remarks });
               return 'Approved & signed';
             },
           })}
@@ -194,8 +194,8 @@ export function FcccActions({ booking, role, onDialog, compact = false }) {
             title: `Approve ${booking.id}`,
             message: `Approve ${booking.studentName}'s booking (${formatDate(booking.date, { weekday: true })} · ${formatRange(booking.startHour, booking.endHour)}). Your digital signature and “APPROVED” are added. No printing is needed.`,
             confirmLabel: 'Sign & approve',
-            onConfirm: async ({ signature, remarks }) => {
-              await call('adminBookingDecision', { bookingId: booking.id, decision: 'approve', signature, remarks });
+            onConfirm: async ({ remarks }) => {
+              await call('adminBookingDecision', { bookingId: booking.id, decision: 'approve', remarks });
               return 'Approved & signed';
             },
           })}
@@ -287,9 +287,20 @@ export function SignatureView({ bookingId, signature }) {
 }
 
 // ---- All signatures on a booking (everyone involved can see them) -------------
-export function useBookingSignatures(bookingId, version) {
-  const [state, setState] = useState({ loading: true, sigs: {}, error: '' });
+/** True when a booking has stored signature images (older bookings, before text signatures). */
+export function hasStoredSignatures(b) {
+  if (!b) return false;
+  if (b.signature?.path || b.fcccApproval?.signaturePath) return true;
+  return Object.values(b.special?.steps || {}).some((s) => s?.signaturePath || s?.documentPath);
+}
+
+export function useBookingSignatures(bookingId, version, enabled = true) {
+  const [state, setState] = useState({ loading: enabled, sigs: {}, error: '' });
   useEffect(() => {
+    if (!enabled) {
+      setState({ loading: false, sigs: {}, error: '' });
+      return undefined;
+    }
     let alive = true;
     setState((s) => ({ ...s, loading: true }));
     call('getBookingSignatures', { bookingId })
@@ -298,7 +309,7 @@ export function useBookingSignatures(bookingId, version) {
     return () => {
       alive = false;
     };
-  }, [bookingId, version]);
+  }, [bookingId, version, enabled]);
   return state;
 }
 
@@ -316,12 +327,13 @@ export function signatureEntries(b, sigs) {
       name: b.signature?.signerName || b.studentName,
       at: b.signature?.signedAt,
       img: sigs.student,
+      stamp: b.signature?.digital ? b.signature : null,
       note: b.signature?.signedBy && b.signature.signedBy !== b.signature.signerName ? `Entered by ${b.signature.signedBy}` : 'Declaration & undertaking',
     },
   ];
   if (!b.isSpecial) {
     const a = b.fcccApproval;
-    out.push({ key: 'fccc', role: 'FC-CC — Approved', pending: !a, name: a?.byName, at: a?.at, img: sigs.fccc, approved: Boolean(a) });
+    out.push({ key: 'fccc', role: 'FC-CC — Approved', pending: !a, name: a?.byName, at: a?.at, img: sigs.fccc, stamp: a?.signature || null, approved: Boolean(a) });
     return out;
   }
   for (const s of specialStepsFor(b.studentType).filter((x) => x.signs)) {
@@ -339,7 +351,7 @@ export function signatureEntries(b, sigs) {
         note: st ? `Verified by ${st.verifiedBy || st.byName}` : null,
       });
     } else {
-      out.push({ key: 'fccc', role: 'FC-CC — Approved', pending: !st, name: st?.byName, at: st?.at, img: sigs['special.final'], approved: st?.state === 'approved' });
+      out.push({ key: 'fccc', role: 'FC-CC — Approved', pending: !st, name: st?.byName, at: st?.at, img: sigs['special.final'], stamp: st?.signature || null, approved: st?.state === 'approved' });
     }
   }
   return out;
@@ -357,7 +369,7 @@ export function handlingNotes(b) {
 
 export function SignaturesPanel({ booking }) {
   const version = JSON.stringify([booking.special?.steps, booking.fcccApproval, booking.fcApproval?.state]);
-  const { loading, sigs, error } = useBookingSignatures(booking.id, version);
+  const { loading, sigs, error } = useBookingSignatures(booking.id, version, hasStoredSignatures(booking));
   const entries = signatureEntries(booking, sigs);
   return (
     <div className="sig-grid">
@@ -365,8 +377,10 @@ export function SignaturesPanel({ booking }) {
         <div key={e.key} className={`sig-card ${e.pending ? 'pending' : ''}`}>
           <div className="sig-role">{e.role}</div>
           <div className="sig-box">
-            {e.approved && <span className="approved-stamp">APPROVED</span>}
-            {e.img ? (
+            {e.approved && !e.stamp && <span className="approved-stamp">APPROVED</span>}
+            {e.stamp ? (
+              <DigitalStamp sig={e.stamp} approved={e.approved} />
+            ) : e.img ? (
               <img src={e.img} alt={`${e.role} signature`} className={e.doc ? 'doc' : ''} />
             ) : (
               <span className="small muted">{loading ? 'Loading…' : e.pending ? 'Pending' : e.key === 'fc' ? 'Approved online' : e.paper ? (e.doc ? 'Signed on paper (no photo attached)' : 'Signed on paper') : 'No signature on file'}</span>

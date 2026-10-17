@@ -7,7 +7,6 @@ import { sendAll, adminEmails } from './mail.js';
 import * as N from './notify.js';
 import { CALL_OPTS } from './bookings.js';
 import { addHistory, mutateBooking, syncSlots, logApproval } from './bookingCore.js';
-import { stampSignature, storeDocument, decodeDocument } from './signatures.js';
 import {
   STATUS,
   ACTIVE_STATUSES,
@@ -16,6 +15,7 @@ import {
   specialStepsFor,
   ACCOUNT_STATUS,
   STATUS_META,
+  digitalSignature,
 } from '../shared/constants.js';
 import { formatRange, formatDate } from '../shared/calendar.js';
 
@@ -135,16 +135,12 @@ export const specialApprovalStep = onCall(CALL_OPTS, async (request) => {
     fail('failed-precondition', step === 'final' ? 'The FC Lab Assistant must issue the form first.' : 'The form has already been issued.');
   }
 
-  // FC-CC's final approval must be digitally signed. A photo of the signed
-  // paper form (Director / Dept CC signatures) can be attached.
-  let signaturePath = null;
-  let documentPath = null;
-  if (decision === 'approve') {
-    // Only the FC-CC signs; the FC Lab Assistant just prints and hands over the form.
-    if (step === 'final') signaturePath = await stampSignature(actor, bookingId, step, { dataUrl: request.data?.signature, required: true });
-    const doc = decodeDocument(request.data?.document);
-    if (doc) documentPath = await storeDocument(bookingId, 'signed-paper-form', doc);
-  }
+  // The FC-CC's final approval carries her digital signature (a text stamp).
+  // The FC Lab Assistant only prints and hands over the form.
+  const now0 = Date.now();
+  const signature = decision === 'approve' && step === 'final'
+    ? digitalSignature({ name: actor.name, role: 'FC-CC', at: now0, ref: bookingId })
+    : null;
 
   const { after } = await mutateBooking(bookingId, (b) => {
     if (b.status !== STATUS.PENDING_SPECIAL_APPROVAL) fail('failed-precondition', 'This booking is not awaiting special approval.');
@@ -160,7 +156,7 @@ export const specialApprovalStep = onCall(CALL_OPTS, async (request) => {
       return addHistory(b, { event: `REJECTED AT ${stepDef.label.toUpperCase()}`, actor: by, note: remarks });
     }
     if (step === 'fcAssistant') {
-      steps.fcAssistant = rec('approved', { signaturePath });
+      steps.fcAssistant = rec('approved');
       return addHistory(b, { event: stepDef.done.toUpperCase(), actor: by, note: remarks, at: now });
     }
     // Final: record the paper signatures as verified by the FC-CC, then approve.
@@ -168,8 +164,7 @@ export const specialApprovalStep = onCall(CALL_OPTS, async (request) => {
       steps[p.key] = { state: 'approved', paper: true, verifiedBy: actor.name, byName: actor.name, at: now };
       addHistory(b, { event: `${p.done.toUpperCase()} (VERIFIED ON PAPER FORM)`, actor: by, at: now });
     }
-    if (documentPath) steps.director.documentPath = documentPath;
-    steps.final = rec('approved', { signaturePath });
+    steps.final = rec('approved', { signature });
     addHistory(b, { event: stepDef.done.toUpperCase(), actor: by, note: remarks, at: now + 1 });
     b.status = STATUS.APPROVED;
     return addHistory(b, { event: 'APPROVED', actor: by, at: now + 2, note: 'Give the signed form to the Admin Guard.' });

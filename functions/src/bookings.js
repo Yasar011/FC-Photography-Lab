@@ -17,7 +17,6 @@ import {
 
 } from './core.js';
 import { SMTP_PASS, sendAll, adminEmails, appLink } from './mail.js';
-import { decodeSignature, stampSignature } from './signatures.js';
 import * as N from './notify.js';
 import {
   SLOT_TAKEN_MSG,
@@ -42,6 +41,7 @@ import {
   isValidEmail,
   isAllowedEmail,
   niftKey,
+  digitalSignature,
 } from '../shared/constants.js';
 import {
   evaluateRange,
@@ -230,20 +230,35 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     if (c.required && !checked) fail('invalid-argument', `Please confirm: ${c.label}`);
     confirmations[c.id] = { label: c.label, checked };
   }
-  const signatureBuf = decodeSignature(data.signature);
+  // Digital signature = the student's explicit consent, stamped with name, NIFT ID and time.
+  if (data.signDigitally !== true) fail('invalid-argument', 'Please tick “I sign this booking digitally”.');
   const remarks = staffBooking ? str(data.remarks, 1000) : '';
 
   // 10–11. Atomically claim every hour — only one request can win.
   const id = await nextBookingId();
   const hours = [];
   for (let h = startHour; h < endHour; h++) hours.push(h);
-  const lock = await db.ref(`bookingSlots/${date}`).transaction((cur) => {
-    const day = cur || {};
-    for (const h of hours) if (isSlotOccupied(day[slotKey(h)])) return undefined;
-    for (const h of hours) day[slotKey(h)] = { bookingId: id, status: STATUS.SUBMITTED, uid: studentUid };
-    return day;
-  });
-  if (!lock.committed) fail('already-exists', SLOT_TAKEN_MSG);
+  // Claim each hour atomically (lowest first). If any hour is already taken,
+  // give back the hours claimed so far — two students can never both win.
+  const claimed = [];
+  const giveBack = () =>
+    Promise.all(claimed.map((h) =>
+      db.ref(`bookingSlots/${date}/${slotKey(h)}`).transaction((cur) => (cur?.bookingId === id ? null : cur)).catch(() => {}),
+    ));
+  for (const h of hours) {
+    let res = null;
+    try {
+      res = await db.ref(`bookingSlots/${date}/${slotKey(h)}`).transaction((cur) =>
+        isSlotOccupied(cur) ? undefined : { bookingId: id, status: STATUS.SUBMITTED, uid: studentUid });
+    } catch {
+      res = null;
+    }
+    if (!res?.committed || res.snapshot.val()?.bookingId !== id) {
+      await giveBack();
+      fail('already-exists', SLOT_TAKEN_MSG);
+    }
+    claimed.push(h);
+  }
 
   const release = () =>
     syncSlots({ id, date, startHour, endHour, status: STATUS.CANCELLED_BY_ADMIN }).catch(() => {});
@@ -262,18 +277,6 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
   if (!recheck.ok || recheck.requiresSpecial !== isSpecial) {
     await release();
     fail('failed-precondition', 'The FC Staff just changed availability for this time. Please select the slot again.');
-  }
-
-  const signaturePath = `signatures/${id}.png`;
-  try {
-    await bucket().file(signaturePath).save(signatureBuf, {
-      contentType: 'image/png',
-      resumable: false,
-      metadata: { metadata: { bookingId: id, niftId: student.niftId, uid: studentUid } },
-    });
-  } catch (err) {
-    await release();
-    fail('internal', 'Could not save your signature. Please try again.');
   }
 
   // 15. Workflow.
@@ -317,7 +320,7 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     // special bookings end with the FC-CC's final approval.
     fcccApprovalRequired: true,
     signature: {
-      path: signaturePath,
+      ...digitalSignature({ name: student.name, id: student.niftId, role: 'Student', at: now, ref: id }),
       signerName: student.name,
       signerNiftId: student.niftId,
       signedAt: now,
@@ -489,9 +492,6 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
   // Only the FC-CC (or Main Admin) decides; approvals are digitally signed.
   const current = (await db.ref(`bookings/${bookingId}`).get()).val();
   if (!current) fail('not-found', 'Booking not found.');
-  const signaturePath = decision === 'approve'
-    ? await stampSignature(actor, bookingId, 'fccc', { dataUrl: request.data?.signature, required: true })
-    : null;
 
   const { after } = await mutateBooking(bookingId, (b) => {
     if (decision === 'reject') {
@@ -506,7 +506,11 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
     if (b.status === STATUS.PENDING_SPECIAL_APPROVAL) fail('failed-precondition', 'Use the special approval tracker to approve this booking.');
     if (b.status === STATUS.FACULTY_CONCERN) fail('failed-precondition', 'Resolve the faculty concern instead.');
     if (![STATUS.SUBMITTED, STATUS.FC_APPROVED, STATUS.PENDING_FCCC_APPROVAL].includes(b.status)) fail('failed-precondition', 'This booking cannot be approved.');
-    b.fcccApproval = { byUid: actor.uid, byName: actor.name, role: actor.role, at: Date.now(), remarks: remarks || null, signaturePath };
+    const at = Date.now();
+    b.fcccApproval = {
+      byUid: actor.uid, byName: actor.name, role: actor.role, at, remarks: remarks || null,
+      signature: digitalSignature({ name: actor.name, role: 'FC-CC', at, ref: bookingId }),
+    };
     b.status = STATUS.APPROVED;
     return addHistory(b, { event: 'APPROVED & DIGITALLY SIGNED BY FC-CC', actor: by, note: remarks });
   });
@@ -535,6 +539,7 @@ export const getSignature = onCall(async (request) => {
   if (!b) fail('not-found', 'Booking not found.');
   const allowed = actor.role || b.studentUid === actor.uid || b.fcStudentUid === actor.uid;
   if (!allowed) fail('permission-denied', 'You cannot view this signature.');
+  if (!b.signature?.path) return { dataUrl: null, signature: b.signature || null }; // text signature
   const [buf] = await bucket().file(b.signature.path).download();
   return { dataUrl: `data:image/png;base64,${buf.toString('base64')}` };
 });

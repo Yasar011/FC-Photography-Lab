@@ -106,7 +106,7 @@ export const registerStudent = onCall(async (request) => {
   try {
     await db.ref().update({
       [`users/${actor.uid}`]: profile,
-      [`students/${key}`]: { uid: actor.uid, niftId, name, department, semester, studentType, status: profile.status, registeredAt: now },
+      [`students/${key}`]: { uid: actor.uid, niftId, name, email: actor.email, department, semester, studentType, status: profile.status, registeredAt: now },
       [ap]: av,
     });
   } catch (err) {
