@@ -161,7 +161,7 @@ export function SpecialActions({ booking, role, onDialog, compact = false, hideP
             },
           })}
         >
-          <Icon name="stamp" /> Paper signatures OK → Sign & approve
+          <Icon name="stamp" /> {compact ? 'Sign & approve' : 'Paper signatures OK → Sign & approve'}
         </button>
         {rejectBtn}
       </div>

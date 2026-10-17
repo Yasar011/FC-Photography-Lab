@@ -7,10 +7,10 @@ import { call } from '../../firebase.js';
 import { PageHead } from '../../components/ui.jsx';
 import { useActionDialog } from '../../components/SignApprove.jsx';
 import { FcccActions } from '../../components/BookingBits.jsx';
+import { ApprovalTabs, ApprovalList } from '../../components/ApprovalList.jsx';
 import { useStatusList } from './AdminDashboard.jsx';
-import Icon from '../../components/Icon.jsx';
-import { STATUS, STUDENT_TYPE_LABELS } from '@shared/constants.js';
-import { formatDate, formatRange, todayIST } from '@shared/calendar.js';
+import { STATUS } from '@shared/constants.js';
+import { formatDate, formatRange } from '@shared/calendar.js';
 
 /**
  * Approvals — NORMAL bookings only (special bookings live on Special approvals):
@@ -20,7 +20,6 @@ import { formatDate, formatRange, todayIST } from '@shared/calendar.js';
 export default function BookingApprovals() {
   const { role, isFccc } = useAuth();
   const now = useNow(60000);
-  const today = todayIST(now);
   const pending = useStatusList(STATUS.PENDING_FCCC_APPROVAL);
   const approved = useStatusList(STATUS.APPROVED);
   const [openDialog, dialogNode] = useActionDialog();
@@ -46,7 +45,7 @@ export default function BookingApprovals() {
     });
 
   const tabs = [
-    { key: 'approve', label: 'To approve', n: toApprove.length, hint: isFccc ? 'Open a booking to check it, then Sign & approve or Reject.' : 'Only the FC-CC can approve these.' },
+    { key: 'approve', label: 'To approve', n: toApprove.length, hot: true, hint: isFccc ? 'Open a booking to check it, then Sign & approve or Reject.' : 'Only the FC-CC can approve these.' },
     { key: 'approved', label: 'Approved', n: upcoming.length, hint: 'Confirmed by the FC-CC. No printing needed.' },
   ];
   const current = tabs.find((t) => t.key === tab);
@@ -63,39 +62,11 @@ export default function BookingApprovals() {
         <span className="live-dot">Live</span>
       </PageHead>
 
-      <div className="tabs" role="tablist">
-        {tabs.map((t) => (
-          <button key={t.key} role="tab" aria-selected={tab === t.key} className={tab === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>
-            {t.label} <span className={`tab-n ${t.n && t.key !== 'approved' ? 'hot' : ''}`}>{t.n}</span>
-          </button>
-        ))}
-      </div>
+      <ApprovalTabs tabs={tabs} tab={tab} onChange={setTab} />
       <p className="small muted" style={{ margin: '0 0 12px' }}>
         {current.hint} Special bookings (after 10 PM / weekend / holiday) are in <Link to="/admin/special">Special approvals</Link>.
       </p>
-
-      {list.length === 0 ? (
-        <div className="appr-empty"><Icon name="check" /> Nothing here.</div>
-      ) : (
-        <div className="appr-list">
-          {list.map((b) => (
-            <div key={b.id} className="appr-row">
-              <Link to={`/bookings/${b.id}`} className="appr-when">
-                <b>{b.date === today ? 'Today' : formatDate(b.date, { weekday: true })}</b>
-                <span>{formatRange(b.startHour, b.endHour)}</span>
-              </Link>
-              <Link to={`/bookings/${b.id}`} className="appr-main">
-                <div className="appr-name">
-                  {b.studentName}
-                  <span className="appr-tag">{STUDENT_TYPE_LABELS[b.studentType]}</span>
-                </div>
-                <div className="small muted appr-purpose">{b.purpose}</div>
-              </Link>
-              <div className="appr-actions">{actionsFor(b)}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      <ApprovalList items={list} actionsFor={actionsFor} />
       {dialogNode}
     </>
   );
