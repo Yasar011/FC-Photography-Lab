@@ -7,7 +7,7 @@ import {
 } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
 
-import { auth, db, googleProvider, call, ALLOWED_DOMAIN } from '../firebase.js';
+import { auth, db, googleProvider, call, ALLOWED_DOMAIN, CLIENT_BACKEND } from '../firebase.js';
 import { withRuleDefaults } from '@shared/defaults.js';
 import { STUDENT_TYPES } from '@shared/constants.js';
 
@@ -61,6 +61,18 @@ export function AuthProvider({ children }) {
     ];
     return () => offs.forEach((off) => off());
   }, [user, synced]);
+
+  // Spark plan: admins' browsers run the automatic jobs (complete / expire
+  // bookings, semester progression, clean up old data when the database fills).
+  useEffect(() => {
+    if (!CLIENT_BACKEND || !user || !role) return undefined;
+    let stop = null;
+    import('@backend').then((m) => {
+      m.startAdminJobs(role);
+      stop = m.stopAdminJobs;
+    });
+    return () => stop?.();
+  }, [user, role]);
 
   const value = useMemo(() => {
     // Routing waits for profile AND role, so admins without a student profile

@@ -2,80 +2,186 @@
   "rules": {
     ".read": false,
     ".write": false,
-
-    "users": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').exists()",
-      ".indexOn": ["niftId", "email", "status", "department", "semester"],
-      "$uid": {
-        ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && auth.uid === $uid"
-      }
-    },
-
-    "students": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').exists()",
-      ".indexOn": ["uid", "department", "status", "studentType"]
-    },
-
-    "bookings": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && (root.child('roles/' + auth.uid + '/role').exists() || (query.orderByChild === 'studentUid' && query.equalTo === auth.uid))",
-      ".indexOn": ["studentUid", "status", "date", "fcStudentUid", "seniorUid", "createdAt", "startAt"],
-      "$bookingId": {
-        ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && (data.child('studentUid').val() === auth.uid || data.child('fcStudentUid').val() === auth.uid || data.child('seniorUid').val() === auth.uid)"
-      }
-    },
-
-    "bookingSlots": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/)"
-    },
-
-    "fcApprovals": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && (root.child('roles/' + auth.uid + '/role').exists() || (query.orderByChild === 'fcStudentUid' && query.equalTo === auth.uid))",
-      ".indexOn": ["fcStudentUid", "requesterUid", "state", "bookingId", "createdAt"],
-      "$approvalId": {
-        ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && (data.child('fcStudentUid').val() === auth.uid || data.child('requesterUid').val() === auth.uid)"
-      }
-    },
-
-    "approvals": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').exists()",
-      ".indexOn": ["bookingId", "at", "kind"]
-    },
-
-    "facultyNotifications": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').exists()"
-    },
-
-    "admins": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').exists()"
-    },
-
-    "adminInvites": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').val() === 'main'"
-    },
-
     "roles": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').val() === 'main'",
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && root.child('roles/' + auth.uid + '/role').val() === 'main')",
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && auth.uid === $uid"
+        ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && auth.uid === $uid",
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && root.child('roles/' + auth.uid + '/role').val() === 'main') || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && auth.uid === $uid && ((auth.token.email.toLowerCase() === 'fc.jodhpur@nift.ac.in' && newData.child('role').val() === 'main') || (newData.child('role').exists() && root.child('adminInvites/' + auth.token.email.toLowerCase().replace('.', ',') + '/role').val() === newData.child('role').val()))))",
+        ".validate": "!newData.exists() || newData.child('role').val() === 'main' || newData.child('role').val() === 'staff' || newData.child('role').val() === 'fccc'"
       }
     },
-
-    "settings": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/)"
+    "admins": {
+      ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/))",
+      ".indexOn": [
+        "email",
+        "role"
+      ],
+      "$uid": {
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && root.child('roles/' + auth.uid + '/role').val() === 'main') || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && auth.uid === $uid && newData.child('role').val() === newData.parent().parent().child('roles/' + $uid + '/role').val()))"
+      }
     },
-
-    "equipment": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/)"
+    "adminInvites": {
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && root.child('roles/' + auth.uid + '/role').val() === 'main')",
+      "$key": {
+        ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && $key === auth.token.email.toLowerCase().replace('.', ',')",
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && root.child('roles/' + auth.uid + '/role').val() === 'main') || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && !newData.exists() && $key === auth.token.email.toLowerCase().replace('.', ',')))"
+      }
     },
-
+    "users": {
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))",
+      ".indexOn": [
+        "niftId",
+        "email",
+        "status",
+        "department",
+        "semester"
+      ],
+      "$uid": {
+        ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && auth.uid === $uid",
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && auth.uid === $uid && ((!data.exists() && newData.child('uid').val() === auth.uid && newData.child('email').val() === auth.token.email.toLowerCase() && newData.child('status').val() === 'ACTIVE' && newData.child('bookingAccess').val() === true && ((newData.child('department').val() === 'FC' && newData.child('studentType').val() === 'FC_STUDENT') || (newData.child('department').val() !== 'FC' && newData.child('studentType').val() === 'OTHER_DEPT_STUDENT'))) || (data.exists() && newData.exists() && newData.child('uid').val() === data.child('uid').val() && newData.child('niftId').val() === data.child('niftId').val() && newData.child('email').val() === data.child('email').val() && newData.child('name').val() === data.child('name').val() && newData.child('status').val() === data.child('status').val() && newData.child('studentType').val() === data.child('studentType').val() && newData.child('department').val() === data.child('department').val() && newData.child('semester').val() === data.child('semester').val() && newData.child('bookingAccess').val() === data.child('bookingAccess').val() && (!data.child('bookingBlock/until').exists() || data.child('bookingBlock/until').val() < now || newData.child('bookingBlock/until').val() >= data.child('bookingBlock/until').val())))))"
+      }
+    },
+    "students": {
+      ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/))",
+      ".indexOn": [
+        "uid",
+        "name",
+        "department",
+        "status",
+        "studentType"
+      ],
+      "$key": {
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && ((!data.exists() && newData.child('uid').val() === auth.uid && !newData.child('studentType').exists() && !root.child('users/' + auth.uid + '/niftId').exists()) || (data.child('uid').val() === auth.uid && !data.child('studentType').exists() && newData.exists() && newData.child('uid').val() === auth.uid && newData.child('niftId').val() === data.child('niftId').val() && newData.child('email').val() === auth.token.email.toLowerCase() && newData.child('status').val() === 'ACTIVE' && ((newData.child('department').val() === 'FC' && newData.child('studentType').val() === 'FC_STUDENT') || (newData.child('department').val() !== 'FC' && newData.child('studentType').val() === 'OTHER_DEPT_STUDENT'))) || (data.child('uid').val() === auth.uid && !data.child('studentType').exists() && !newData.exists()))))"
+      }
+    },
+    "bookings": {
+      ".read": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && query.orderByChild === 'studentUid' && query.equalTo === auth.uid))",
+      ".indexOn": [
+        "studentUid",
+        "status",
+        "date",
+        "fcStudentUid",
+        "seniorUid",
+        "createdAt",
+        "startAt"
+      ],
+      "$bookingId": {
+        ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (data.child('studentUid').val() === auth.uid || data.child('fcStudentUid').val() === auth.uid || data.child('seniorUid').val() === auth.uid || data.child('faculty/email').val() === auth.token.email.toLowerCase()))",
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && ((!data.exists() && newData.child('id').val() === $bookingId && newData.child('studentUid').val() === auth.uid && newData.child('email').val() === auth.token.email.toLowerCase() && newData.child('studentType').val() === root.child('users/' + auth.uid).child('studentType').val() && root.child('users/' + auth.uid).child('status').val() === 'ACTIVE' && root.child('users/' + auth.uid).child('bookingAccess').val() === true && (!root.child('users/' + auth.uid).child('bookingBlock/until').exists() || root.child('users/' + auth.uid).child('bookingBlock/until').val() < now) && (newData.child('status').val() === 'PENDING_FC_APPROVAL' || newData.child('status').val() === 'PENDING_SPECIAL_APPROVAL' || newData.child('status').val() === 'PENDING_FCCC_APPROVAL') && !newData.child('fcccApproval').exists() && !newData.child('special/steps').exists() && (newData.child('studentType').val() !== 'OTHER_DEPT_STUDENT' || (newData.child('status').val() === 'PENDING_FC_APPROVAL' && newData.child('fcStudentUid').exists() && newData.child('fcStudentUid').val() !== auth.uid)) && (newData.child('endHour').val() <= 22 || (newData.child('isSpecial').val() === true && newData.child('status').val() !== 'PENDING_FCCC_APPROVAL')) && newData.child('startAt').val() > now && newData.child('startAt').val() < now + 8 * 86400000 && newData.child('endHour').val() - newData.child('startHour').val() >= 1 && newData.child('endHour').val() - newData.child('startHour').val() <= (newData.child('studentType').val() === 'OTHER_DEPT_STUDENT' ? 4 : 6)) || (data.child('studentUid').val() === auth.uid && (data.child('status').val() === 'SUBMITTED' || data.child('status').val() === 'PENDING_FC_APPROVAL' || data.child('status').val() === 'FC_APPROVED' || data.child('status').val() === 'PENDING_SPECIAL_APPROVAL' || data.child('status').val() === 'PENDING_FCCC_APPROVAL' || data.child('status').val() === 'FACULTY_CONCERN' || data.child('status').val() === 'APPROVED') && newData.child('status').val() === 'CANCELLED_BY_STUDENT' && data.child('startAt').val() > now && (newData.child('id').val() === data.child('id').val() && newData.child('studentUid').val() === data.child('studentUid').val() && newData.child('date').val() === data.child('date').val() && newData.child('startHour').val() === data.child('startHour').val() && newData.child('endHour').val() === data.child('endHour').val() && newData.child('startAt').val() === data.child('startAt').val() && newData.child('studentType').val() === data.child('studentType').val() && newData.child('isSpecial').val() === data.child('isSpecial').val()) && (newData.child('fcccApproval/at').val() === data.child('fcccApproval/at').val() && newData.child('special/steps/fcAssistant/state').val() === data.child('special/steps/fcAssistant/state').val() && newData.child('special/steps/final/state').val() === data.child('special/steps/final/state').val())) || (data.child('fcStudentUid').val() === auth.uid && (data.child('status').val() === 'PENDING_FC_APPROVAL' || (data.child('status').val() === 'FACULTY_CONCERN' && data.child('facultyConcern/previousStatus').val() === 'PENDING_FC_APPROVAL')) && (newData.child('status').val() === 'REJECTED' || newData.child('status').val() === 'FACULTY_CONCERN' || (data.child('isSpecial').val() === true ? newData.child('status').val() === 'PENDING_SPECIAL_APPROVAL' : newData.child('status').val() === 'PENDING_FCCC_APPROVAL')) && (newData.child('id').val() === data.child('id').val() && newData.child('studentUid').val() === data.child('studentUid').val() && newData.child('date').val() === data.child('date').val() && newData.child('startHour').val() === data.child('startHour').val() && newData.child('endHour').val() === data.child('endHour').val() && newData.child('startAt').val() === data.child('startAt').val() && newData.child('studentType').val() === data.child('studentType').val() && newData.child('isSpecial').val() === data.child('isSpecial').val()) && (newData.child('fcccApproval/at').val() === data.child('fcccApproval/at').val() && newData.child('special/steps/fcAssistant/state').val() === data.child('special/steps/fcAssistant/state').val() && newData.child('special/steps/final/state').val() === data.child('special/steps/final/state').val())) || (data.child('faculty/email').val() === auth.token.email.toLowerCase() && !data.child('facultyConcern').exists() && newData.child('facultyConcern/facultyEmail').val() === auth.token.email.toLowerCase() && (newData.child('status').val() === data.child('status').val() || newData.child('status').val() === 'FACULTY_CONCERN') && (newData.child('id').val() === data.child('id').val() && newData.child('studentUid').val() === data.child('studentUid').val() && newData.child('date').val() === data.child('date').val() && newData.child('startHour').val() === data.child('startHour').val() && newData.child('endHour').val() === data.child('endHour').val() && newData.child('startAt').val() === data.child('startAt').val() && newData.child('studentType').val() === data.child('studentType').val() && newData.child('isSpecial').val() === data.child('isSpecial').val()) && (newData.child('fcccApproval/at').val() === data.child('fcccApproval/at').val() && newData.child('special/steps/fcAssistant/state').val() === data.child('special/steps/fcAssistant/state').val() && newData.child('special/steps/final/state').val() === data.child('special/steps/final/state').val())))))"
+      }
+    },
+    "bookingSlots": {
+      ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/))",
+      "$date": {
+        ".write": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))",
+        "$hour": {
+          ".write": "((!data.exists() && newData.exists() && (newData.child('uid').val() === auth.uid || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))) && newData.child('status').val() === 'SUBMITTED') || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || (data.exists() && (data.child('uid').val() === auth.uid || newData.parent().parent().parent().child('bookings/' + data.child('bookingId').val()).child('fcStudentUid').val() === auth.uid || newData.parent().parent().parent().child('bookings/' + data.child('bookingId').val()).child('faculty/email').val() === auth.token.email.toLowerCase()) && ((!newData.exists() && (!newData.parent().parent().parent().child('bookings/' + data.child('bookingId').val()).exists() || (newData.parent().parent().parent().child('bookings/' + data.child('bookingId').val()).child('status').val() === 'REJECTED' || newData.parent().parent().parent().child('bookings/' + data.child('bookingId').val()).child('status').val() === 'CANCELLED_BY_STUDENT' || newData.parent().parent().parent().child('bookings/' + data.child('bookingId').val()).child('status').val() === 'CANCELLED_BY_ADMIN'))) || (newData.exists() && newData.child('bookingId').val() === data.child('bookingId').val() && newData.child('uid').val() === data.child('uid').val() && newData.child('status').val() === newData.parent().parent().parent().child('bookings/' + data.child('bookingId').val()).child('status').val()))))",
+          ".validate": "newData.hasChildren(['bookingId', 'status', 'uid'])"
+        }
+      }
+    },
+    "counters": {
+      "bookingIds": {
+        "$day": {
+          ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/))",
+          ".write": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/))",
+          ".validate": "newData.isNumber() && ((!data.exists() && newData.val() === 1) || (data.exists() && newData.val() === data.val() + 1))"
+        }
+      }
+    },
+    "fcApprovals": {
+      ".read": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && query.orderByChild === 'fcStudentUid' && query.equalTo === auth.uid))",
+      ".indexOn": [
+        "fcStudentUid",
+        "requesterUid",
+        "state",
+        "bookingId",
+        "createdAt"
+      ],
+      "$id": {
+        ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (data.child('fcStudentUid').val() === auth.uid || data.child('requesterUid').val() === auth.uid))",
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && ((!data.exists() && newData.child('requesterUid').val() === auth.uid && newData.child('state').val() === 'PENDING') || (data.child('fcStudentUid').val() === auth.uid && data.child('state').val() !== 'CANCELLED' && (newData.child('state').val() === 'PENDING' || newData.child('state').val() === 'APPROVED' || newData.child('state').val() === 'REJECTED') && newData.child('bookingId').val() === data.child('bookingId').val() && newData.child('fcStudentUid').val() === data.child('fcStudentUid').val() && newData.child('requesterUid').val() === data.child('requesterUid').val()) || (data.child('requesterUid').val() === auth.uid && newData.child('state').val() === 'CANCELLED' && newData.child('bookingId').val() === data.child('bookingId').val() && newData.child('fcStudentUid').val() === data.child('fcStudentUid').val() && newData.child('requesterUid').val() === data.child('requesterUid').val()))))"
+      }
+    },
+    "facultyNotifications": {
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))",
+      "$bookingId": {
+        ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && data.child('facultyEmail').val() === auth.token.email.toLowerCase()",
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && ((!data.exists() && newData.parent().parent().child('bookings/' + $bookingId + '/studentUid').val() === auth.uid) || (data.child('facultyEmail').val() === auth.token.email.toLowerCase() && !data.child('response').exists() && newData.child('facultyEmail').val() === data.child('facultyEmail').val() && newData.child('tokenHash').val() === data.child('tokenHash').val() && newData.child('bookingId').val() === data.child('bookingId').val()))))"
+      }
+    },
+    "approvals": {
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))",
+      ".indexOn": [
+        "bookingId",
+        "at",
+        "kind"
+      ],
+      "$id": {
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && !data.exists() && newData.child('byUid').val() === auth.uid))"
+      }
+    },
     "auditLogs": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && root.child('roles/' + auth.uid + '/role').exists()",
-      ".indexOn": ["at", "bookingId", "niftId", "action", "uid"]
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))",
+      ".indexOn": [
+        "at",
+        "bookingId",
+        "niftId",
+        "action",
+        "uid"
+      ],
+      "$id": {
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && !data.exists() && (newData.child('uid').val() === auth.uid || newData.child('uid').val() === 'system')))"
+      }
     },
-
     "emailLogs": {
-      ".read": "auth != null && auth.token.email_verified === true && auth.token.email.matches(/.*@nift\\.ac\\.in$/) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff')",
-      ".indexOn": ["createdAt", "bookingId", "status", "type"]
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff'))",
+      ".indexOn": [
+        "createdAt",
+        "bookingId",
+        "status",
+        "type"
+      ],
+      "$id": {
+        ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && ((!data.exists() && (newData.child('status').val() === 'queued' || newData.child('status').val() === 'skipped')) || (data.exists() && newData.exists() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('subject').val() === data.child('subject').val() && newData.child('recipient').val() === data.child('recipient').val()))))"
+      }
+    },
+    "settings": {
+      ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/))",
+      ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && root.child('roles/' + auth.uid + '/role').val() === 'main') || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && !root.child('settings/initializedAt').exists()))",
+      "holidays": {
+        ".write": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff'))"
+      },
+      "availabilityOverrides": {
+        ".write": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff'))"
+      },
+      "academicCalendar": {
+        "lastRuns": {
+          ".write": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))"
+        }
+      }
+    },
+    "equipment": {
+      ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/))",
+      ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && root.child('roles/' + auth.uid + '/role').val() === 'main') || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && !data.exists()))"
+    },
+    "files": {
+      "$bookingId": {
+        ".read": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('bookings/' + $bookingId + '/studentUid').val() === auth.uid || root.child('bookings/' + $bookingId + '/fcStudentUid').val() === auth.uid || root.child('bookings/' + $bookingId + '/seniorUid').val() === auth.uid)))",
+        "$name": {
+          ".write": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || ((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && !data.exists() && newData.child('uid').val() === auth.uid))"
+        }
+      }
+    },
+    "staffSignatures": {
+      "$uid": {
+        ".read": "(((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) || (auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && auth.uid === $uid)",
+        ".write": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc')) && auth.uid === $uid"
+      }
+    },
+    "maintenance": {
+      ".read": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))",
+      ".write": "((auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && (root.child('roles/' + auth.uid + '/role').val() === 'main' || root.child('roles/' + auth.uid + '/role').val() === 'staff' || root.child('roles/' + auth.uid + '/role').val() === 'fccc'))"
     }
   }
 }

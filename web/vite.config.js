@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
@@ -26,8 +26,26 @@ const DEMO_ALIASES = [
   [/^node:crypto$/, 'node-crypto.js'],
 ].map(([find, file]) => ({ find, replacement: shim(file) }));
 
+// Production on the free Spark plan: the real Firebase SDK, but the backend
+// code (functions/src) runs in the browser. Set VITE_BACKEND=functions to use
+// deployed Cloud Functions instead.
+const backendShim = (f) => fileURLToPath(new URL(`./src/backend/shims/${f}`, import.meta.url));
+const CLIENT_BACKEND_ALIASES = [
+  [/^firebase-admin\/app$/, shim('admin-app.js')],
+  [/^firebase-admin\/database$/, backendShim('admin-database.js')],
+  [/^firebase-admin\/storage$/, backendShim('admin-storage.js')],
+  [/^firebase-admin\/auth$/, backendShim('admin-auth.js')],
+  [/^firebase-functions\/v2$/, shim('functions-v2.js')],
+  [/^firebase-functions\/v2\/https$/, shim('functions-https.js')],
+  [/^firebase-functions\/v2\/scheduler$/, shim('functions-scheduler.js')],
+  [/^firebase-functions\/params$/, backendShim('functions-params.js')],
+  [/^nodemailer$/, backendShim('nodemailer.js')],
+  [/^node:crypto$/, shim('node-crypto.js')],
+].map(([find, replacement]) => ({ find, replacement }));
+
 export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
+  const clientBackend = !demo && loadEnv(mode, process.cwd(), 'VITE_').VITE_BACKEND !== 'functions';
   return {
     plugins: [react()],
     base: demo ? './' : '/',
@@ -35,7 +53,9 @@ export default defineConfig(({ mode }) => {
       alias: [
         { find: '@shared', replacement: shared },
         { find: /^@demo$/, replacement: fileURLToPath(new URL(`./src/demo/${demo ? 'index.js' : 'stub.js'}`, import.meta.url)) },
+        { find: /^@backend$/, replacement: fileURLToPath(new URL(`./src/backend/${clientBackend ? 'index.js' : 'stub.js'}`, import.meta.url)) },
         ...(demo ? DEMO_ALIASES : []),
+        ...(clientBackend ? CLIENT_BACKEND_ALIASES : []),
       ],
     },
     server: { port: demo ? 5174 : 5173, fs: { allow: ['..'] } },

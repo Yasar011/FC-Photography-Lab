@@ -7,6 +7,8 @@ const env = import.meta.env;
 
 // `vite --mode demo` runs the whole system in the browser (see src/demo).
 export const DEMO = import.meta.env.MODE === 'demo'; // literal so production builds drop all demo code
+// Spark plan: run the backend code in the browser instead of calling Cloud Functions.
+export const CLIENT_BACKEND = !DEMO && env.VITE_BACKEND !== 'functions';
 export const firebaseConfigured = DEMO || Boolean(env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_DATABASE_URL);
 
 const app = initializeApp({
@@ -35,6 +37,24 @@ googleProvider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: 'select_account
 
 /** Call a Cloud Function and return its data; errors carry a readable message. */
 export async function call(name, data = {}) {
+  if (CLIENT_BACKEND) {
+    try {
+      const { localCall } = await import('@backend');
+      return await localCall(name, data);
+    } catch (err) {
+      const denied = /permission[_ ]denied/i.test(String(err?.message || err?.code || ''));
+      if (err?.name !== 'HttpsError') console.error(`[${name}]`, err);
+      const e = new Error(
+        err?.name === 'HttpsError'
+          ? err.message
+          : denied
+            ? 'You do not have permission for this action.'
+            : 'Something went wrong. Please check your connection and try again.',
+      );
+      e.code = err?.code;
+      throw e;
+    }
+  }
   try {
     const res = await httpsCallable(functions, name, { timeout: 60000 })(data);
     return res.data;

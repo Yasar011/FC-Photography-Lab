@@ -13,6 +13,13 @@ The sheet also keeps **one live row per booking** in the **Bookings** tab, updat
 When a faculty member presses **I DID NOT APPROVE THIS**, that booking's row turns **red** until the FC-CC decides. After that, the *Faculty response* cell stays red.
 Every email is listed in the **Emails** tab.
 
+## Updating the script (needed after the switch to the free Spark plan)
+The website now sends a proof of who is signed in instead of a secret. The new `Code.gs` checks that proof, reads the booking itself, and only emails people connected to the booking or admins.
+1. Open the Google Sheet and click **Extensions → Apps Script**.
+2. Replace everything in `Code.gs` with the new [`Code.gs`](Code.gs) and save.
+3. Click **Deploy → Manage deployments → ✏️ Edit**, set **Version: New version**, then click **Deploy**. The URL stays the same.
+4. Run `setup` once if you haven't, and keep **TEST MODE** on until you are happy. Then run `goLive`.
+
 ## Setup (about 5 minutes)
 
 1. Open the Google Sheet → **Extensions → Apps Script**.

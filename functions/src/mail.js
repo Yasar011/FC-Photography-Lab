@@ -67,12 +67,16 @@ export function sheetBooking(b) {
   };
 }
 
+const callerIdToken = async () =>
+  typeof globalThis.__fcIdToken === 'function' ? (await globalThis.__fcIdToken()) || undefined : undefined;
+
 /** POST to the Apps Script web app. Throws on any error. */
 async function postToSheet(payload) {
   const res = await fetch(sheetsUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script reads e.postData.contents
-    body: JSON.stringify({ secret: SHEETS_WEBHOOK_SECRET.value(), ...payload }),
+    // Server: shared secret. In-browser backend (Spark plan): the user's Firebase ID token.
+    body: JSON.stringify({ secret: SHEETS_WEBHOOK_SECRET.value() || undefined, idToken: await callerIdToken(), ...payload }),
     redirect: 'follow',
   });
   const text = await res.text();

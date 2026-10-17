@@ -14,6 +14,13 @@
  *   Run `setup` → copy the SECRET from the log → Deploy as Web app → copy URL.
  */
 
+// Public project settings (not secret) — used to check the sender's sign-in.
+const FIREBASE_API_KEY = 'AIzaSyAx0F8ldw0SEecIJp6-4BLh1rWIGUrnbdg';
+const DB_URL = 'https://fc-photography-lab-default-rtdb.firebaseio.com';
+const ALLOWED_DOMAIN = '@nift.ac.in';
+const APP_URL = 'https://fc-photography-lab.vercel.app';
+const MAX_EMAILS_PER_USER_PER_HOUR = 60;
+
 const BOOKINGS = 'Bookings';
 const EMAILS = 'Emails';
 
@@ -39,15 +46,33 @@ function doPost(e) {
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const props = PropertiesService.getScriptProperties();
     const secret = props.getProperty('SECRET');
-    if (!secret || body.secret !== secret) return json({ ok: false, error: 'Unauthorized' });
+
+    let booking = body.booking || null;
+    let sender = 'server';
+    if (secret && body.secret === secret) {
+      // Cloud Functions (trusted server): data as sent.
+    } else if (body.idToken) {
+      // The app on the free Spark plan: check who is signed in, read the booking
+      // ourselves, and only email people connected to it.
+      const user = verifyFirebaseUser(body.idToken);
+      sender = user.email;
+      rateLimit(user.email);
+      const bookingId = (body.booking && body.booking.id) || null;
+      const raw = bookingId ? readDb('bookings/' + bookingId, body.idToken) : null;
+      if (bookingId && !raw) return json({ ok: false, error: 'Booking not found or not allowed' });
+      booking = raw ? summarize(raw) : null;
+      if (body.action === 'mail' && body.mail) checkRecipients(body.mail, raw, body.idToken);
+    } else {
+      return json({ ok: false, error: 'Unauthorized' });
+    }
 
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
-      if (body.booking) upsertBooking(body.booking);
+      if (booking) upsertBooking(booking);
       if (body.action === 'mail' && body.mail) {
         const result = sendMail(body.mail, props);
-        logEmail(body.mail, body.booking, result);
+        logEmail(body.mail, booking, result + (sender === 'server' ? '' : ' · by ' + sender));
       }
     } finally {
       lock.releaseLock();
@@ -56,6 +81,81 @@ function doPost(e) {
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Checks for requests coming from the browser (Spark plan)
+// ---------------------------------------------------------------------------
+function verifyFirebaseUser(idToken) {
+  const res = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + FIREBASE_API_KEY, {
+    method: 'post', contentType: 'application/json', payload: JSON.stringify({ idToken: idToken }), muteHttpExceptions: true,
+  });
+  const users = (JSON.parse(res.getContentText() || '{}').users) || [];
+  const u = users[0];
+  const email = u && String(u.email || '').toLowerCase();
+  if (!u || u.emailVerified !== true || !email.endsWith(ALLOWED_DOMAIN)) throw new Error('Not a signed-in NIFT account');
+  return { uid: u.localId, email: email };
+}
+
+function readDb(path, idToken) {
+  const res = UrlFetchApp.fetch(DB_URL + '/' + path + '.json?auth=' + encodeURIComponent(idToken), { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return null;
+  return JSON.parse(res.getContentText() || 'null');
+}
+
+function rateLimit(email) {
+  const cache = CacheService.getScriptCache();
+  const key = 'rate:' + email;
+  const n = Number(cache.get(key) || 0) + 1;
+  if (n > MAX_EMAILS_PER_USER_PER_HOUR) throw new Error('Too many emails from this account — try again later');
+  cache.put(key, String(n), 3600);
+}
+
+/** Every recipient must be a NIFT address connected to the booking, or an admin. */
+function checkRecipients(mail, b, idToken) {
+  const ok = {};
+  const add = (x) => { if (x) ok[String(x).toLowerCase()] = true; };
+  if (b) {
+    add(b.email);
+    add(b.faculty && b.faculty.email);
+    add(b.fcStudent && b.fcStudent.email);
+    add(b.senior && b.senior.email);
+  }
+  const admins = readDb('admins', idToken) || {};
+  Object.keys(admins).forEach((k) => add(admins[k] && admins[k].email));
+  [].concat(mail.to || []).forEach((to) => {
+    const t = String(to).toLowerCase();
+    if (!t.endsWith(ALLOWED_DOMAIN) || !ok[t]) throw new Error('Recipient not allowed: ' + t);
+  });
+}
+
+const STATUS_LABELS = {
+  SUBMITTED: 'Booking Submitted', PENDING_FC_APPROVAL: 'Pending FC Student Approval', FC_APPROVED: 'FC Student Approved',
+  PENDING_SPECIAL_APPROVAL: 'Pending Special Approval', PENDING_FCCC_APPROVAL: 'Pending FC-CC Approval',
+  FACULTY_CONCERN: 'Faculty Concern', APPROVED: 'Approved', REJECTED: 'Rejected',
+  CANCELLED_BY_STUDENT: 'Cancelled by Student', CANCELLED_BY_ADMIN: 'Cancelled by Admin', COMPLETED: 'Completed',
+};
+const TYPE_LABELS = { FC_STUDENT: 'FC Student', FC_IDM_STUDENT: 'FC-IDM Student', OTHER_DEPT_STUDENT: 'Other Department Student' };
+
+function hourLabel(h) {
+  const hh = ((h + 11) % 12) + 1;
+  return hh + ':00 ' + (h % 24 < 12 ? 'AM' : 'PM');
+}
+
+/** Booking record from the database → one sheet row (same fields the server sends). */
+function summarize(b) {
+  const concern = b.facultyConcern || null;
+  return {
+    id: b.id, status: b.status, statusLabel: STATUS_LABELS[b.status] || b.status, student: b.studentName, email: b.email,
+    niftId: b.niftId, department: b.department, semester: b.semester, studentType: TYPE_LABELS[b.studentType] || b.studentType,
+    date: b.date, time: hourLabel(b.startHour) + ' – ' + hourLabel(b.endHour), hours: b.duration, purpose: b.purpose,
+    equipment: (b.equipmentList || []).join(', '), special: b.isSpecial ? ((b.specialReasons || []).join(', ') || 'Yes') : '',
+    facultyName: (b.faculty && b.faculty.name) || '', facultyEmail: (b.faculty && b.faculty.email) || '',
+    fcStudent: b.fcStudent ? b.fcStudent.name + ' (' + b.fcStudent.niftId + ')' : '',
+    facultySaidNo: Boolean(concern), facultyConcernOpen: Boolean(concern && !concern.resolved),
+    facultyRemarks: (concern && concern.remarks) || '', approvedBy: (b.fcccApproval && b.fcccApproval.byName) || '',
+    link: APP_URL + '/bookings/' + b.id, createdAt: b.createdAt || null,
+  };
 }
 
 function doGet() {
