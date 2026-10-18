@@ -17,13 +17,13 @@ const { renderEmail } = await vite.ssrLoadModule('/../functions/src/mail.js');
 
 const day = '2026-10-19';
 const fcBooking = {
-  id: 'FC-261018-0001', status: 'PENDING_FCCC_APPROVAL', studentName: 'Aarav Mehta', niftId: 'FC/23/014', email: 'aarav.mehta@nift.ac.in',
+  id: 'FC-261018-0001', status: 'PENDING_FCCC_APPROVAL', studentName: 'Aarav Mehta', phone: '+91 98290 11402', niftId: 'FC/23/014', email: 'aarav.mehta@nift.ac.in',
   department: 'FC', semester: 6, studentType: 'FC_STUDENT', date: day, startHour: 17, endHour: 21, duration: 4,
   purpose: 'Portfolio shoot — product still life', equipmentList: ['Photography Lab', 'Camera', 'Lights', 'RGB Light'],
   faculty: { name: 'Dr. Anjali Rao', email: 'anjali.rao@nift.ac.in' }, createdBy: { name: 'Aarav Mehta' },
 };
 const otherBooking = {
-  ...fcBooking, id: 'FC-261018-0002', status: 'PENDING_FC_APPROVAL', studentName: 'Riya Sharma', niftId: 'BFT/23/041', email: 'riya.sharma@nift.ac.in',
+  ...fcBooking, id: 'FC-261018-0002', phone: '+91 99280 33190', status: 'PENDING_FC_APPROVAL', studentName: 'Riya Sharma', niftId: 'BFT/23/041', email: 'riya.sharma@nift.ac.in',
   department: 'BFT', studentType: 'OTHER_DEPT_STUDENT', startHour: 18, endHour: 20, duration: 2, purpose: 'Green-screen test for fashion film',
   equipmentList: ['Photography Lab', 'Green Room'], bringsOwnCamera: true,
   fcStudent: { name: 'Neha Verma', niftId: 'FC/24/022', email: 'neha.verma@nift.ac.in' },

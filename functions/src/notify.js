@@ -115,7 +115,11 @@ export function adminApprovedNoticeEmail(b, to) {
       ],
       rows: bookingRows(b),
       extraRows: [
+        ['Student email', b.email],
+        ['Student phone', b.phone],
+        ['Booked by', b.bookedByStaff ? `FC Staff — ${b.createdBy?.name || ''}` : 'Student (online)'],
         ['Approved by', a.byName ? `${a.byName} (FC-CC)` : 'FC-CC'],
+        ['Approved at', a.at ? formatDateTime(a.at) : ''],
         ['Digital signature', a.signature?.code || ''],
         ...fcRows(b),
         ...facultyRows(b),
