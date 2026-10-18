@@ -13,6 +13,7 @@ import {
   APP_NAME,
   STATUS_META,
   STUDENT_TYPE_LABELS,
+  participantLines,
 } from '../shared/constants.js';
 import { formatDate, formatRange } from '../shared/calendar.js';
 
@@ -56,6 +57,7 @@ export function sheetBooking(b) {
     facultyName: b.faculty?.name || '',
     facultyEmail: b.faculty?.email || '',
     fcStudent: b.fcStudent ? `${b.fcStudent.name} (${b.fcStudent.niftId})` : '',
+    people: participantLines(b).join('\n'),
     // Faculty pressed "I DID NOT APPROVE THIS" → the row turns red in the sheet.
     facultySaidNo: Boolean(concern),
     facultyConcernOpen: Boolean(concern && !concern.resolved),
@@ -156,7 +158,7 @@ export function renderEmail({ heading, intro = [], rows = [], extraRows = [], ac
     .map(
       ([k, v]) =>
         `<tr><td style="padding:6px 12px 6px 0;color:#555;white-space:nowrap;vertical-align:top">${esc(k)}</td>` +
-        `<td style="padding:6px 0;color:#111;vertical-align:top">${esc(v)}</td></tr>`,
+        `<td style="padding:6px 0;color:#111;vertical-align:top">${esc(v).replace(/\n/g, '<br>')}</td></tr>`,
     )
     .join('');
   const paras = intro.map((p) => `<p style="margin:0 0 12px">${esc(p)}</p>`).join('');

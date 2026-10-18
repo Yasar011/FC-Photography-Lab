@@ -28,7 +28,7 @@ const BOOKING_HEADERS = [
   'Booking ID', 'Status', 'Student', 'NIFT ID', 'Student email', 'Dept', 'Sem', 'Student type',
   'Date', 'Time', 'Hours', 'Purpose', 'Equipment', 'Special (after 10 PM / weekend / holiday)',
   'Faculty', 'Faculty email', 'Faculty response', 'FC student involved', 'Approved by (FC-CC)',
-  'Open in app', 'Created', 'Last update',
+  'Open in app', 'Created', 'Last update', 'People (special bookings)',
 ];
 const EMAIL_HEADERS = ['Time', 'To', 'Subject', 'Type', 'Booking ID', 'Result'];
 const COL = Object.fromEntries(BOOKING_HEADERS.map((h, i) => [h, i + 1]));
@@ -123,6 +123,9 @@ function checkRecipients(mail, b, idToken) {
   }
   const admins = readDb('admins', idToken) || {};
   Object.keys(admins).forEach((k) => add(admins[k] && admins[k].email));
+  // Addresses told when the FC-CC approves (Settings → "Email when the FC-CC approves").
+  const notify = readDb('settings/bookingRules/approvalNotifyEmails', idToken);
+  (Array.isArray(notify) ? notify : ['admin.jodhpur@nift.ac.in']).forEach(add);
   [].concat(mail.to || []).forEach((to) => {
     const t = String(to).toLowerCase();
     if (!t.endsWith(ALLOWED_DOMAIN) || !ok[t]) throw new Error('Recipient not allowed: ' + t);
@@ -155,6 +158,7 @@ function summarize(b) {
     facultySaidNo: Boolean(concern), facultyConcernOpen: Boolean(concern && !concern.resolved),
     facultyRemarks: (concern && concern.remarks) || '', approvedBy: (b.fcccApproval && b.fcccApproval.byName) || '',
     link: APP_URL + '/bookings/' + b.id, createdAt: b.createdAt || null,
+    people: (b.participants || []).map(function (p, i) { return (i + 1) + '. ' + p.name + ' · ' + p.department + ' · ' + p.hostel + ', Room ' + p.room; }).join('\n'),
   };
 }
 
@@ -297,7 +301,7 @@ function upsertBooking(b) {
     b.id, b.statusLabel, b.student, b.niftId, b.email, b.department, b.semester, b.studentType,
     b.date, b.time, b.hours, b.purpose, b.equipment, b.special,
     b.facultyName, b.facultyEmail, facultyResponse, b.fcStudent, b.approvedBy,
-    b.link, b.createdAt ? new Date(b.createdAt) : '', new Date(),
+    b.link, b.createdAt ? new Date(b.createdAt) : '', new Date(), b.people || '',
   ];
 
   const ids = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map((r) => String(r[0])) : [];
@@ -337,6 +341,10 @@ function sheet(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
+  if (sh.getLastRow() > 0 && sh.getLastColumn() < headers.length) {
+    // New columns added in an update: extend the header row.
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#1d1d1f').setFontColor('#ffffff');
+  }
   if (sh.getLastRow() === 0) {
     sh.appendRow(headers);
     sh.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#1d1d1f').setFontColor('#ffffff');

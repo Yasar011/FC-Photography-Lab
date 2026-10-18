@@ -31,6 +31,11 @@ const otherBooking = {
 const specialBooking = {
   ...fcBooking, id: 'FC-261018-0003', status: 'PENDING_SPECIAL_APPROVAL', date: '2026-10-24', startHour: 11, endHour: 14, duration: 3,
   purpose: 'Lookbook shoot with external models', isSpecial: true, specialReasons: ['Weekend'],
+  participants: [
+    { name: 'Aarav Mehta', department: 'FC', hostel: 'Boys Hostel', room: 'B-112' },
+    { name: 'Ananya Gupta', department: 'FD', hostel: 'Girls Hostel', room: 'G-118' },
+    { name: 'Karan Patel', department: 'FC', hostel: 'Boys Hostel', room: 'B-007' },
+  ],
 };
 const approved = (b) => ({ ...b, status: 'APPROVED', fcccApproval: { byName: 'Prof. Meera Iyer', at: Date.now() } });
 
@@ -40,6 +45,7 @@ const sections = [
     ['Faculty', N.facultyEmail(fcBooking, `${process.env.VITE_APP_URL}/faculty/${fcBooking.id}?t=EXAMPLE`)],
     ['FC-CC', N.fcccApprovalNeededEmail(fcBooking, ['meera.iyer@nift.ac.in'])],
     ['Student — confirmation', N.approvedEmail(approved(fcBooking))],
+    ['admin.jodhpur@nift.ac.in — FC-CC approved', N.adminApprovedNoticeEmail(approved(fcBooking), ['admin.jodhpur@nift.ac.in'])],
   ]],
   ['2. Other-department student (needs an FC student first)', [
     ['Student', N.submittedEmail(otherBooking)],
@@ -52,6 +58,7 @@ const sections = [
     ['FC Lab Assistant — form to print', N.specialRequiredEmail(specialBooking, ['prakash.choudhary@nift.ac.in'], true)],
     ['Student — form issued', N.formIssuedEmail({ ...specialBooking, special: { steps: { fcAssistant: { state: 'approved', byName: 'Prakash Choudhary', at: Date.now() } } } })],
     ['Student — approved (give form to Admin Guard)', N.approvedEmail(approved(specialBooking))],
+    ['admin.jodhpur@nift.ac.in — FC-CC approved (with everyone, hostel & room)', N.adminApprovedNoticeEmail(approved(specialBooking), ['admin.jodhpur@nift.ac.in'])],
   ]],
   ['4. Faculty says "I DID NOT APPROVE THIS"', [
     ['FC-CC / admins', N.facultyConcernAdminEmail({ ...fcBooking, status: 'FACULTY_CONCERN' }, ['meera.iyer@nift.ac.in'], 'I have not been informed about this shoot.')],

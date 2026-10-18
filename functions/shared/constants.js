@@ -241,3 +241,9 @@ export function signCode(...parts) {
 export function digitalSignature({ name, id = null, role, at, ref }) {
   return { digital: true, name, id, role, at, code: `${SIGN_ORG}-${signCode(ref, name, id, role, at)}` };
 }
+
+// ---- People using the lab (special bookings) --------------------------------
+/** One line per person: "Name · Department · Hostel, Room". */
+export function participantLines(b) {
+  return (b?.participants || []).map((p, i) => `${i + 1}. ${p.name} · ${p.department} · ${p.hostel}, Room ${p.room}`);
+}

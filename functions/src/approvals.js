@@ -2,7 +2,7 @@
 import crypto from 'node:crypto';
 import { onCall } from 'firebase-functions/v2/https';
 
-import { db, fail, getActor, requireRole, actorRef, auditEntry, str, ADMIN_ROLES } from './core.js';
+import { db, fail, getActor, requireRole, actorRef, auditEntry, str, ADMIN_ROLES, loadSettings } from './core.js';
 import { sendAll, adminEmails } from './mail.js';
 import * as N from './notify.js';
 import { CALL_OPTS } from './bookings.js';
@@ -181,7 +181,10 @@ export const specialApprovalStep = onCall(CALL_OPTS, async (request) => {
       auditAction: decision === 'approve' ? 'SPECIAL_STEP_APPROVED' : 'SPECIAL_STEP_REJECTED',
     }),
   ]);
-  if (after.status === STATUS.APPROVED) await sendAll([N.approvedEmail(after, 'special.final')]);
+  if (after.status === STATUS.APPROVED) {
+    const notify = (await loadSettings()).bookingRules.approvalNotifyEmails;
+    await sendAll([N.approvedEmail(after, 'special.final'), N.adminApprovedNoticeEmail(after, notify)]);
+  }
   else if (after.status === STATUS.REJECTED) await sendAll([N.rejectedEmail(after, `${stepDef.label}: ${remarks}`)]);
   else if (step === 'fcAssistant') await sendAll([N.formIssuedEmail(after)]);
   return { status: after.status };

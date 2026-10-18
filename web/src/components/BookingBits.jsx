@@ -241,6 +241,11 @@ export function BookingFacts({ b, admin = false }) {
     b.senior ? ['Senior student', `${b.senior.name} (${b.senior.niftId}), Sem ${b.senior.semester}`] : null,
     b.faculty ? ['Subject / Faculty', `${b.faculty.name} — ${b.faculty.email}`] : null,
     b.isSpecial ? ['Special approval', (b.specialReasons || []).join(', ') || 'Required'] : null,
+    b.participants?.length ? [`People using the lab (${b.participants.length})`, (
+      <ol className="people-ol">
+        {b.participants.map((p, i) => <li key={i}><b>{p.name}</b> · {p.department} · {p.hostel}, Room {p.room}</li>)}
+      </ol>
+    )] : null,
     b.usesOverride ? ['Availability', 'Uses a slot opened by FC Staff (Admin Override)'] : null,
     b.bringsOwnCamera ? ['Camera', 'Brings personal / department camera (FC camera not issued)'] : null,
     ...Object.values(b.answers || {}).map((a) => [a.label, a.value === true ? 'Yes' : String(a.value)]),

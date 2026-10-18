@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { useAuth } from '../lib/auth.jsx';
 import { call } from '../firebase.js';
-import { STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
+import { DEPARTMENTS, STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
 import { formatDate, formatHour, formatRange, BOOKABLE_STATES, SLOT_LABELS, SLOT } from '@shared/calendar.js';
 import { sortedEntries, maxHoursFor, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
 
@@ -67,6 +67,16 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   const [senior, setSenior] = useState(null);
   const [confirmations, setConfirmations] = useState({});
   const [signed, setSigned] = useState(false); // digital signature = explicit consent
+  // Special bookings: everyone using the lab (row 1 = the student).
+  const maxPeople = Number(rules.maxParticipants) || 30;
+  const [people, setPeople] = useState(() => [{ name: student.name || '', department: student.department || '', hostel: '', room: '' }]);
+  const setPeopleCount = (n) => setPeople((list) => {
+    const count = Math.max(1, Math.min(maxPeople, Number(n) || 1));
+    const next = list.slice(0, count);
+    while (next.length < count) next.push({ name: '', department: '', hostel: '', room: '' });
+    return next;
+  });
+  const setPerson = (i, k, v) => setPeople((list) => list.map((p, j) => (j === i ? { ...p, [k]: v } : p)));
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -91,7 +101,16 @@ export default function BookingForm({ student, staffMode, selection, onSelection
       const item = equipmentConfig?.[id];
       if (item?.requiresReason && (form.equipmentReasons[id] || '').trim().length < 3) return item.reasonLabel || `Please explain why you need ${item.name}.`;
     }
+    if (requiresSpecial) {
+      for (const [i, p] of people.entries()) {
+        if (p.name.trim().length < 3) return `Person ${i + 1}: please enter the full name.`;
+        if (!p.department.trim()) return `Person ${i + 1}: please choose the department.`;
+        if (!p.hostel.trim()) return `Person ${i + 1}: please enter the hostel (or "Day scholar").`;
+        if (!p.room.trim()) return `Person ${i + 1}: please enter the room number (or "-").`;
+      }
+    }
     for (const q of questions) {
+      if (requiresSpecial && q.id === 'q_team') continue; // = number of people listed
       const v = form.answers[q.id];
       if (q.required && (v === undefined || v === '' || v === false)) return `Please answer: ${q.label}`;
     }
@@ -121,7 +140,10 @@ export default function BookingForm({ student, staffMode, selection, onSelection
         purpose: form.purpose.trim(),
         equipment: form.equipment,
         equipmentReasons: form.equipmentReasons,
-        answers: form.answers,
+        answers: requiresSpecial ? { ...form.answers, q_team: people.length } : form.answers,
+        participants: requiresSpecial
+          ? people.map((p) => ({ name: p.name.trim(), department: p.department.trim(), hostel: p.hostel.trim(), room: p.room.trim() }))
+          : undefined,
         facultyName: form.facultyName.trim(),
         facultyEmail: form.facultyEmail.trim(),
         fcStudentNiftId: needsFc ? fcStudent?.niftId : undefined,
@@ -241,11 +263,40 @@ export default function BookingForm({ student, staffMode, selection, onSelection
           {isOther && rules.otherDeptNoticeEnabled && (
             <p className="red-note">{rules.otherDeptNotice}</p>
           )}
-          {questions.map((q) => (
+          {questions.filter((q) => !(requiresSpecial && q.id === 'q_team')).map((q) => (
             <QuestionInput key={q.id} q={q} value={form.answers[q.id]} onChange={(v) => set('answers', { ...form.answers, [q.id]: v })} />
           ))}
         </div>
       </section>
+
+      {requiresSpecial && (
+        <section>
+          <div className="section-title"><span className="n">{++n}</span> People using the lab</div>
+          <div className="stack">
+            <p className="small muted">Special permission needs everyone's details. The list goes on the printed form and to the institute admin when the FC-CC approves.</p>
+            <Field label="How many people will use the lab (including you)?" required>
+              <input className="input" type="number" min={1} max={maxPeople} value={people.length} onChange={(e) => setPeopleCount(e.target.value)} style={{ maxWidth: 120 }} />
+            </Field>
+            <div className="people-list">
+              {people.map((p, i) => (
+                <div key={i} className="person-row">
+                  <span className="person-n">{i + 1}</span>
+                  <input className="input" placeholder="Full name" value={p.name} onChange={(e) => setPerson(i, 'name', e.target.value)} maxLength={100} aria-label={`Person ${i + 1} full name`} />
+                  <select className="select" value={p.department} onChange={(e) => setPerson(i, 'department', e.target.value)} aria-label={`Person ${i + 1} department`}>
+                    <option value="">Department</option>
+                    {[...DEPARTMENTS, 'Other / External'].map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                  <input className="input" placeholder="Hostel (or Day scholar)" value={p.hostel} onChange={(e) => setPerson(i, 'hostel', e.target.value)} maxLength={80} aria-label={`Person ${i + 1} hostel`} />
+                  <input className="input" placeholder="Room no." value={p.room} onChange={(e) => setPerson(i, 'room', e.target.value)} maxLength={20} aria-label={`Person ${i + 1} room`} />
+                </div>
+              ))}
+            </div>
+            {people.length < maxPeople && (
+              <button type="button" className="btn btn-sm" onClick={() => setPeopleCount(people.length + 1)}><Icon name="plus" /> Add person</button>
+            )}
+          </div>
+        </section>
+      )}
 
       {hasPeople && (
         <section>

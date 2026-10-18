@@ -135,7 +135,7 @@ try {
   const WE = ahead.find((d) => [0, 6].includes(cal.dayOfWeek(d)));
   const [D1, D2, D3] = weekdays;
   const FAC = { facultyName: U.fac.name, facultyEmail: U.fac.email };
-  const base = (date, s, e, extra = {}) => ({ date, startHour: s, endHour: e, purpose: 'Live test', equipment: ['photoLab'], answers: { q_team: 1 }, confirmations: { c_agree: true }, signDigitally: true, ...FAC, ...extra });
+  const base = (date, s, e, extra = {}) => ({ date, startHour: s, endHour: e, purpose: 'Live test', equipment: ['photoLab'], answers: { q_team: 1 }, confirmations: { c_agree: true }, signDigitally: true, ...FAC, participants: [{ name: 'Test Person', department: 'FC', hostel: 'Boys Hostel', room: '101' }], ...extra });
 
   // Admins: main is set directly (the real bootstrap email is not used in tests); main invites the others.
   await adb.ref().update({

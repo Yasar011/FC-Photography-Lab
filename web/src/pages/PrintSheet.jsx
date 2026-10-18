@@ -125,6 +125,20 @@ export default function PrintSheet() {
           </tbody>
         </table>
 
+        {b.participants?.length > 0 && (
+          <>
+            <h3>People using the lab ({b.participants.length})</h3>
+            <table className="people-table">
+              <thead><tr><th>#</th><th>Full name</th><th>Department</th><th>Hostel</th><th>Room</th></tr></thead>
+              <tbody>
+                {b.participants.map((p, i) => (
+                  <tr key={i}><td>{i + 1}</td><td>{p.name}</td><td>{p.department}</td><td>{p.hostel}</td><td>{p.room}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
         <h3>Student declaration</h3>
         <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{b.declaration?.text}</p>
 

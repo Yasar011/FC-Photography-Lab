@@ -1,12 +1,18 @@
 // Email content for every booking event (official, plain).
 import { appLink, bookingRows } from './mail.js';
 import { formatDateTime } from '../shared/calendar.js';
-import { specialStepsFor, specialInstructionsFor, ADMIN_GUARD_NOTE, STATUS } from '../shared/constants.js';
+import { specialStepsFor, specialInstructionsFor, ADMIN_GUARD_NOTE, STATUS, participantLines } from '../shared/constants.js';
 
 const bookingLink = (b) => ({ label: 'View booking', url: appLink(`/bookings/${b.id}`) });
 
 const fcRows = (b) =>
   b.fcStudent ? [['FC Student Involved', `${b.fcStudent.name} (${b.fcStudent.niftId})`]] : [];
+/** Special bookings: "People using the lab (N)" + one row per person. */
+const peopleRows = (b) => {
+  const lines = participantLines(b);
+  return lines.length ? [[`People using the lab (${lines.length})`, lines.join('\n')]] : [];
+};
+
 const facultyRows = (b) =>
   b.faculty?.email ? [['Subject / Faculty', `${b.faculty.name} <${b.faculty.email}>`]] : [];
 
@@ -84,7 +90,37 @@ export function approvedEmail(b, trigger = 'booking.approved') {
           : ['No printing is needed — your booking is approved in the system. You may optionally print the booking slip from the portal.']),
       ],
       rows: bookingRows(b),
-      extraRows: [...fcRows(b), ...facultyRows(b)],
+      extraRows: [...fcRows(b), ...facultyRows(b), ...peopleRows(b)],
+      action: bookingLink(b),
+    },
+  };
+}
+
+/** To the institute admin (e.g. admin.jodhpur@nift.ac.in) when the FC-CC approves. */
+export function adminApprovedNoticeEmail(b, to) {
+  const a = b.fcccApproval || b.special?.steps?.final || {};
+  return {
+    type: 'admin_approval_notice',
+    to: to || [],
+    subject: `FC-CC approved – FC Photography Lab booking ${b.id}${b.isSpecial ? ' (special permission)' : ''}`,
+    bookingId: b.id,
+    trigger: 'booking.approved.adminNotice',
+    content: {
+      heading: `FC-CC has approved booking ${b.id}`,
+      intro: [
+        `The FC-CC${a.byName ? ` (${a.byName})` : ''} has approved this FC Photography Lab booking.`,
+        ...(b.isSpecial
+          ? [`This is a special-permission booking (${(b.specialReasons || []).join(', ') || 'outside regular hours'}). Everyone using the lab is listed below with hostel and room.`]
+          : []),
+      ],
+      rows: bookingRows(b),
+      extraRows: [
+        ['Approved by', a.byName ? `${a.byName} (FC-CC)` : 'FC-CC'],
+        ['Digital signature', a.signature?.code || ''],
+        ...fcRows(b),
+        ...facultyRows(b),
+        ...peopleRows(b),
+      ],
       action: bookingLink(b),
     },
   };
@@ -165,6 +201,7 @@ export function specialRequiredEmail(b, to, forAdmins = false) {
       extraRows: [
         ['Reason for special approval', (b.specialReasons || []).join(', ')],
         ['Approval chain', `${specialStepsFor(b.studentType).map((s) => s.label).join(' → ')} → Admin Guard`],
+        ...peopleRows(b),
       ],
       action: forAdmins
         ? { label: 'Open booking', url: appLink(`/bookings/${b.id}`) }

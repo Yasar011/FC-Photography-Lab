@@ -211,6 +211,29 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
 
   const answers = collectAnswers(settings.questions, data.answers);
 
+  // Special bookings: every person using the lab — full name, department, hostel and room.
+  let participants = null;
+  if (isSpecial) {
+    const list = Array.isArray(data.participants) ? data.participants : [];
+    const max = Number(rules.maxParticipants) || 30;
+    if (!list.length) fail('invalid-argument', 'Please add every person who will use the lab (name, department, hostel and room).');
+    if (list.length > max) fail('invalid-argument', `At most ${max} people can be listed.`);
+    participants = list.map((p, i) => {
+      const person = {
+        name: str(p?.name, 100),
+        department: str(p?.department, 40),
+        hostel: str(p?.hostel, 80),
+        room: str(p?.room, 20),
+      };
+      if (person.name.length < 3) fail('invalid-argument', `Person ${i + 1}: please enter the full name.`);
+      if (!person.department) fail('invalid-argument', `Person ${i + 1}: please enter the department.`);
+      if (!person.hostel) fail('invalid-argument', `Person ${i + 1}: please enter the hostel (or "Day scholar").`);
+      if (!person.room) fail('invalid-argument', `Person ${i + 1}: please enter the room number (or "-").`);
+      return person;
+    });
+    if (answers.q_team) answers.q_team.value = participants.length; // number of people = the list
+  }
+
   const facultyName = str(data.facultyName, 120);
   const facultyEmail = str(data.facultyEmail, 160).toLowerCase();
   if (rules.facultyEmailRequired && !facultyEmail) fail('invalid-argument', 'Faculty email is required.');
@@ -305,6 +328,7 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     clsReason: equipmentReasons.clsRoom?.value || '',
     bringsOwnCamera: isOtherDept, // other departments bring their own / department camera
     answers,
+    participants,
     requiresFcApproval,
     fcStudent,
     fcStudentUid: fcStudent?.uid || null,
@@ -490,6 +514,7 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
   if (!['approve', 'reject'].includes(decision)) fail('invalid-argument', 'Invalid decision.');
 
   // Only the FC-CC (or Main Admin) decides; approvals are digitally signed.
+  const settings = await loadSettings();
   const current = (await db.ref(`bookings/${bookingId}`).get()).val();
   if (!current) fail('not-found', 'Booking not found.');
 
@@ -527,7 +552,9 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
     remarks,
     auditAction: decision === 'approve' ? 'ADMIN_APPROVED' : 'ADMIN_REJECTED',
   });
-  await sendAll([decision === 'approve' ? N.approvedEmail(after) : N.rejectedEmail(after, remarks)]);
+  await sendAll(decision === 'approve'
+    ? [N.approvedEmail(after), N.adminApprovedNoticeEmail(after, settings.bookingRules.approvalNotifyEmails)]
+    : [N.rejectedEmail(after, remarks)]);
   return { status: after.status };
 });
 

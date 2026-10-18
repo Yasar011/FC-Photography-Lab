@@ -353,6 +353,13 @@ const SETTINGS_VALIDATORS = {
         .filter(Boolean),
       studentCanCancel: v.studentCanCancel === true,
       cancelCooldownDays: intIn(v.cancelCooldownDays ?? 4, 0, 30, 'Days blocked after cancelling'),
+      maxParticipants: intIn(v.maxParticipants ?? 30, 1, 100, 'Maximum people on a special booking'),
+      approvalNotifyEmails: (() => {
+        const list = (Array.isArray(v.approvalNotifyEmails) ? v.approvalNotifyEmails : String(v.approvalNotifyEmails || '').split(','))
+          .map((e) => String(e).trim().toLowerCase()).filter(Boolean);
+        for (const e of list) if (!isValidEmail(e)) fail('invalid-argument', `Invalid email: ${e}`);
+        return [...new Set(list)].slice(0, 10);
+      })(),
     };
     if (r.gridEndHour <= r.gridStartHour) fail('invalid-argument', 'Calendar end must be after start.');
     if (r.classEndHour <= r.classStartHour) fail('invalid-argument', 'Class end must be after class start.');

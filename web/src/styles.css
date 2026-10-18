@@ -556,3 +556,12 @@ button.allday-chip { cursor: pointer; }
 .dstamp .approved-stamp { position: absolute; right: 8px; top: 8px; }
 .sign-check { padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; }
 @media print { .dstamp { background: #fff; max-width: none; padding: 4px 8px; } .dstamp-name { font-size: 15px; } }
+
+/* Special bookings: people using the lab */
+.people-list { display: flex; flex-direction: column; gap: 8px; }
+.person-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, .7fr); gap: 6px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 12px; }
+.person-row > input:first-of-type { grid-column: 2 / -1; } /* full name on its own line */
+.person-n { grid-row: span 2; align-self: start; width: 24px; height: 24px; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+.people-ol { margin: 0; padding-left: 18px; }
+.people-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+.people-table th, .people-table td { border: 1px solid #999; padding: 3px 6px; text-align: left; }

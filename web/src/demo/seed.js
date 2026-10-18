@@ -23,6 +23,11 @@ function booking(_name, date, startHour, endHour, purpose, equipment, extra = {}
     answers: { q_project: extra.project || 'Portfolio', q_team: extra.team || 2 },
     confirmations: CONFIRM,
     signDigitally: true, // "I sign this booking digitally"
+    participants: [
+      { name: _name, department: 'FC', hostel: 'Girls Hostel', room: '214' },
+      { name: 'Ananya Gupta', department: 'FD', hostel: 'Girls Hostel', room: '118' },
+      { name: 'Karan Patel', department: 'FC', hostel: 'Boys Hostel', room: 'B-07' },
+    ],
     ...FACULTY, // subject / faculty is mandatory
     ...extra,
   };

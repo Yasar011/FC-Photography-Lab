@@ -73,7 +73,9 @@ try {
   const FAC = { facultyName: 'Dr. Anjali Rao', facultyEmail: 'anjali.rao@nift.ac.in' };
   const base = (date, s, e, extra = {}) => ({
     date, startHour: s, endHour: e, purpose: 'Test shoot', equipment: ['photoLab'],
-    answers: { q_team: 1 }, confirmations: { c_agree: true }, signDigitally: true, ...FAC, ...extra,
+    answers: { q_team: 1 }, confirmations: { c_agree: true }, signDigitally: true, ...FAC,
+    participants: [{ name: 'Test Person One', department: 'FC', hostel: 'Boys Hostel', room: '101' }, { name: 'Test Person Two', department: 'FD', hostel: 'Girls Hostel', room: '202' }],
+    ...extra,
   });
 
   // ---- setup ----
@@ -178,7 +180,12 @@ try {
 
   // ---- 6. Special approval ----
   console.log('\n6. Special approval (weekend)');
-  const sp = await expectOk('FC student books weekend 9–12', call('createBooking', base(WE, 9, 12), 'demo-fc'));
+  await expectFail('Special booking without the people list', call('createBooking', base(WE, 9, 12, { participants: [] }), 'demo-fc'), /every person/i);
+  await expectFail('Special booking: a person without hostel/room', call('createBooking', base(WE, 9, 12, { participants: [{ name: 'Some One', department: 'FC', hostel: '', room: '' }] }), 'demo-fc'), /hostel/i);
+  const sp = await expectOk('FC student books weekend 9–12 with 2 people', call('createBooking', base(WE, 9, 12), 'demo-fc'));
+  check('people list stored (name, dept, hostel, room)', booking(sp.bookingId)?.participants?.length === 2 && booking(sp.bookingId).participants[1].room === '202');
+  check('number of people = list length', booking(sp.bookingId)?.answers?.q_team?.value === 2);
+  check('normal bookings store no people list', !booking(fc4.bookingId)?.participants);
   check('→ PENDING_SPECIAL_APPROVAL', booking(sp.bookingId).status === STATUS.PENDING_SPECIAL_APPROVAL);
   await expectFail('FC-CC final approval before the form is issued', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'final', decision: 'approve' }, 'demo-fccc'), /issue the form/i);
   await expectFail('FC Lab Assistant rejects (FC-CC only)', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'fcAssistant', decision: 'reject', remarks: 'x' }, 'demo-staff'), /FC-CC/);
@@ -187,6 +194,9 @@ try {
   await expectOk('FC-CC final approval', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'final', decision: 'approve' }, 'demo-fccc'));
   const spb = booking(sp.bookingId);
   check('→ APPROVED with FC-CC digital stamp; Director verified on paper', spb.status === STATUS.APPROVED && spb.special.steps.final.signature?.digital && spb.special.steps.director?.paper);
+  const notice = Object.values(store.getRaw('demoOutbox') || {}).find((m) => m.to.includes('admin.jodhpur@nift.ac.in') && m.subject.includes(sp.bookingId));
+  check('admin.jodhpur@nift.ac.in told "FC-CC approved" with every person, hostel and room', Boolean(notice) && /Test Person Two · FD · Girls Hostel, Room 202/.test(notice.text));
+  check('admin.jodhpur also told about normal approvals', Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.to.includes('admin.jodhpur@nift.ac.in') && m.subject.includes(fc4.bookingId)));
 
   // ---- 7. Faculty "I DID NOT APPROVE THIS" ----
   console.log('\n7. Faculty concern');

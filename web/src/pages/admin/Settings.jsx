@@ -149,6 +149,19 @@ function RulesEditor() {
               <input className="input" type="number" min={0} max={30} value={r.cancelCooldownDays ?? 4} onChange={num('cancelCooldownDays')} />
             </Field>
           </div>
+          <div className="grid grid-2" style={{ marginTop: 12 }}>
+            <Field label="Email when the FC-CC approves" help="Comma-separated. Special bookings include everyone's name, department, hostel and room.">
+              <input
+                className="input"
+                value={Array.isArray(r.approvalNotifyEmails) ? r.approvalNotifyEmails.join(', ') : r.approvalNotifyEmails ?? ''}
+                onChange={(e) => set('approvalNotifyEmails', e.target.value)}
+                placeholder="admin.jodhpur@nift.ac.in"
+              />
+            </Field>
+            <Field label="Maximum people on a special booking">
+              <input className="input" type="number" min={1} max={100} value={r.maxParticipants ?? 30} onChange={num('maxParticipants')} />
+            </Field>
+          </div>
         </div>
       </section>
       <section className="card">

@@ -56,6 +56,11 @@ export const DEFAULT_BOOKING_RULES = {
   // A student who cancels their own booking can't book again for this many days (0 = off).
   cancelCooldownDays: 4,
 
+  // Special bookings list every person using the lab (name, department, hostel, room).
+  maxParticipants: 30,
+  // Told whenever the FC-CC approves a booking (special: with the full list of people).
+  approvalNotifyEmails: ['admin.jodhpur@nift.ac.in'],
+
 
 };
 
