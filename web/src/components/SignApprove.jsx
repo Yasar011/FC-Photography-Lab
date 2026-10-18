@@ -1,25 +1,40 @@
 import { useState } from 'react';
 import { useAuth } from '../lib/auth.jsx';
 import { Modal, Field, Alert, ConfirmModal, useToast } from './ui.jsx';
+import QrCode from './QrCode.jsx';
+import { DEMO } from '../firebase.js';
 import { SIGN_ORG } from '@shared/constants.js';
 import { formatDateTime } from '@shared/calendar.js';
 
+/** Link the QR code opens: the booking in the portal (with the code to check). */
+export function verifyUrl(bookingId, code) {
+  if (typeof window === 'undefined' || !bookingId) return '';
+  const base = DEMO ? `${window.location.origin}${window.location.pathname}#` : window.location.origin;
+  return `${base}/bookings/${bookingId}${code ? `?verify=${encodeURIComponent(code)}` : ''}`;
+}
+
 /**
- * A digital signature, shown as a stamp: "Digitally signed by … · FPL-NJ".
+ * A digital signature: QR code + "Digitally signed by …" card.
  * `sig` = { name, id, role, at, code } (see digitalSignature in shared/constants).
+ * Scanning the QR opens the booking, so anyone can check it is genuine.
  */
-export function DigitalStamp({ sig, approved = false, preview = false }) {
+export function DigitalStamp({ sig, bookingId, approved = false, preview = false }) {
   if (!sig) return null;
+  const url = !preview && sig.code ? verifyUrl(bookingId, sig.code) : '';
   return (
-    <div className={`dstamp ${preview ? 'preview' : ''}`}>
-      {approved && <span className="approved-stamp">APPROVED</span>}
-      <div className="dstamp-label">Digitally signed by</div>
-      <div className="dstamp-name">{sig.name}</div>
-      <div className="dstamp-meta">
-        {[sig.id, sig.role].filter(Boolean).join(' · ')}
-        {sig.at ? ` · ${formatDateTime(sig.at)}` : ''}
+    <div className={`dstamp ${preview ? 'preview' : ''} ${approved ? 'approved' : ''}`}>
+      <div className="dstamp-qr">
+        {url ? <QrCode text={url} size={64} label={`Verify signature ${sig.code}`} /> : <span>QR after<br />signing</span>}
       </div>
-      <div className="dstamp-code">{sig.code || `${SIGN_ORG} · added when you confirm`}</div>
+      <div className="dstamp-body">
+        <div className="dstamp-label">
+          <span className="dstamp-tick" aria-hidden>✓</span> {approved ? 'Approved · digitally signed' : 'Digitally signed'}
+        </div>
+        <div className="dstamp-name" title={sig.name}>{sig.name}</div>
+        <div className="dstamp-meta">{[sig.id, sig.role].filter(Boolean).join(' · ')}</div>
+        {sig.at && <div className="dstamp-meta">{formatDateTime(sig.at)}</div>}
+        <div className="dstamp-code">{sig.code || `${SIGN_ORG} · code added on signing`}</div>
+      </div>
     </div>
   );
 }

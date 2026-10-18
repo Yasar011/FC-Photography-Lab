@@ -149,7 +149,7 @@ export default function PrintSheet() {
               <span className="step">{i + 1} · {e.role}</span>
               {e.approved && <span className="print-stamp">APPROVED</span>}
               {e.stamp ? (
-                <DigitalStamp sig={e.stamp} />
+                <DigitalStamp sig={e.stamp} bookingId={b.id} approved={e.approved} />
               ) : e.img ? (
                 <img src={e.img} alt={`${e.role} signature`} />
               ) : (
@@ -158,7 +158,7 @@ export default function PrintSheet() {
                 </span>
               )}
               <span className="line">
-                {e.paper ? (e.at ? `Verified · ${formatDateTime(e.at)}` : 'Signature & date') : `${e.name || 'Name'} ${e.at ? `· ${formatDateTime(e.at)}` : '· Date'}`}
+                {e.paper ? (e.at ? `Verified · ${formatDateTime(e.at)}` : 'Signature & date') : e.stamp ? 'Scan the QR to verify' : `${e.name || 'Name'} ${e.at ? `· ${formatDateTime(e.at)}` : '· Date'}`}
               </span>
             </div>
           ))}

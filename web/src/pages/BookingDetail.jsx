@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../lib/auth.jsx';
 import { useLive } from '../lib/hooks.js';
@@ -16,6 +16,8 @@ export default function BookingDetail() {
   const { id } = useParams();
   const { user, role, isAdmin, isFccc, rules } = useAuth();
   const { value: b, loading, error } = useLive(`bookings/${id}`, [id]);
+  // Opened from a signature QR code: check the code against the booking's signatures.
+  const verifyCode = new URLSearchParams(useLocation().search).get('verify');
   const [ask, dialogNode] = useActionDialog();
 
   if (loading) return <Loading />;
@@ -77,6 +79,7 @@ export default function BookingDetail() {
       </header>
 
       <div className="stack-lg">
+        {verifyCode && <VerifyBanner b={b} code={verifyCode} />}
         {b.status === STATUS.PENDING_FC_APPROVAL && (
           <Alert kind="warn">
             <div className="stack" style={{ gap: 8 }}>
@@ -230,4 +233,19 @@ function EquipmentActions({ b, ask }) {
     );
   }
   return null;
+}
+
+/** Shown when the page is opened by scanning a signature QR code. */
+function VerifyBanner({ b, code }) {
+  const sigs = [b.signature, b.fcccApproval?.signature, b.special?.steps?.final?.signature].filter((x) => x?.code);
+  const match = sigs.find((x) => x.code === code);
+  if (!match) return <Alert kind="error"><b>Signature code {code} does not match this booking.</b> The printed form may not be genuine.</Alert>;
+  return (
+    <Alert kind="ok">
+      <span>
+        <b>✓ Signature verified</b>: {match.code} was signed by <b>{match.name}</b> ({match.role}) on {formatDateTime(match.at)}. Booking status now:{' '}
+        <b>{STATUS_META[b.status]?.label || b.status}</b>.
+      </span>
+    </Alert>
+  );
 }

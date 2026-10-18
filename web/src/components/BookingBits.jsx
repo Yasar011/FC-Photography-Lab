@@ -414,15 +414,15 @@ export function SignaturesPanel({ booking }) {
           <div className="sig-box">
             {e.approved && !e.stamp && <span className="approved-stamp">APPROVED</span>}
             {e.stamp ? (
-              <DigitalStamp sig={e.stamp} approved={e.approved} />
+              <DigitalStamp sig={e.stamp} bookingId={booking.id} approved={e.approved} />
             ) : e.img ? (
               <img src={e.img} alt={`${e.role} signature`} className={e.doc ? 'doc' : ''} />
             ) : (
               <span className="small muted">{loading ? 'Loading…' : e.pending ? 'Pending' : e.key === 'fc' ? 'Approved online' : e.paper ? (e.doc ? 'Signed on paper (no photo attached)' : 'Signed on paper') : 'No signature on file'}</span>
             )}
           </div>
-          {e.name && <div className="sig-name">{e.name}</div>}
-          <div className="tiny muted">{e.at ? formatDateTime(e.at) : ''}{e.note ? `${e.at ? ' · ' : ''}${e.note}` : ''}</div>
+          {e.name && !e.stamp && <div className="sig-name">{e.name}</div>}
+          <div className="tiny muted">{e.stamp ? (e.note || '') : <>{e.at ? formatDateTime(e.at) : ''}{e.note ? `${e.at ? ' · ' : ''}${e.note}` : ''}</>}</div>
         </div>
       ))}
       {error && <p className="small muted">{error}</p>}
