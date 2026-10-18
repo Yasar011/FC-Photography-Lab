@@ -1,8 +1,6 @@
 // Sign-in sync, student registration and profile updates.
 import { onCall } from 'firebase-functions/v2/https';
 
-import { sendAll, adminEmails } from './mail.js';
-import * as N from './notify.js';
 
 import {
   db,
@@ -118,9 +116,6 @@ export const registerStudent = onCall(async (request) => {
   } catch (err) {
     await db.ref(`students/${key}`).remove();
     throw err;
-  }
-  if (idmRequested) {
-    await sendAll([N.idmRequestEmail(profile, await adminEmails(['staff', 'main']))]);
   }
   return { ok: true, idmRequested };
 });

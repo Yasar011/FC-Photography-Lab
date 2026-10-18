@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth.jsx';
 import { useLive, useLiveList, dbQuery, useNow } from '../../lib/hooks.js';
 import { PageHead, StatusBadge, Empty } from '../../components/ui.jsx';
 import { daySlots, useSlotRange } from '../../components/Calendar.jsx';
+import IdmRequests from '../../components/IdmRequests.jsx';
 import { STATUS, ACTIVE_STATUSES, ROLE_LABELS } from '@shared/constants.js';
 import { todayIST, addDays, formatDate, formatRange, formatDateTime, istParts, BOOKABLE_STATES } from '@shared/calendar.js';
 
@@ -23,7 +24,7 @@ export const actionLabel = (a) =>
     .replace(/\b(fc|cc|id)\b/gi, (m) => m.toUpperCase());
 
 export default function AdminDashboard() {
-  const { role, rules, settings } = useAuth();
+  const { role, rules, settings, isStaff } = useAuth();
   const now = useNow(30000);
   const today = todayIST(now);
   const horizon = addDays(today, 14);
@@ -67,6 +68,7 @@ export default function AdminDashboard() {
       </PageHead>
 
       <div className="stack-lg">
+        {isStaff && <IdmRequests />}
         <div className="grid grid-4">
           {stats.map(([k, v, to]) => (
             <Link key={k} to={to} className="card stat" style={{ textDecoration: 'none' }}>

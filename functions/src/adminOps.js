@@ -1,8 +1,6 @@
 // Administrative operations: calendar overrides, holidays, students, admins, settings.
 import { onCall } from 'firebase-functions/v2/https';
 
-import { sendAll } from './mail.js';
-import * as N from './notify.js';
 import { getAuth } from 'firebase-admin/auth';
 
 import {
@@ -256,7 +254,6 @@ export const updateStudent = onCall(async (request) => {
   const [ap, av] = auditEntry(by, action, { niftId: user.niftId, details: { changes, remarks: str(d.remarks, 500) || null } });
   updates[ap] = av;
   await db.ref().update(updates);
-  if (idmDecision) await sendAll([N.idmDecisionEmail({ ...user, ...next }, changes.idmRequest.to, str(d.remarks, 500))]);
   return { ok: true, changed: true };
 });
 

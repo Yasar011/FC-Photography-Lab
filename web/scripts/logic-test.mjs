@@ -238,11 +238,11 @@ try {
   await expectOk('Other-dept student registers and ticks "I am FC-IDM"', call('registerStudent', { name: 'New Student', niftId: 'FD/25/077', department: 'FD', semester: 3, phone: '+91 90000 11111', idmRequest: true }, 'demo-new'));
   const nu = store.getRaw('users/demo-new');
   check('stays other-department until staff confirm; request PENDING', nu.studentType === 'OTHER_DEPT_STUDENT' && nu.idmRequest?.state === 'PENDING');
-  check('FC staff emailed about the FC-IDM request', Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.subject.includes('FC-IDM request') && m.to.includes('prakash.choudhary@nift.ac.in')));
+  check('no email about the FC-IDM request (dashboard only)', !Object.values(store.getRaw('demoOutbox') || {}).some((m) => /FC-IDM/.test(m.subject)));
   await expectFail('Student confirms their own FC-IDM request', call('updateStudent', { niftId: 'FD/25/077', idmDecision: 'approve' }, 'demo-new'));
   await expectOk('Staff confirm FC-IDM', call('updateStudent', { niftId: 'FD/25/077', idmDecision: 'approve', remarks: 'IDM list checked' }, 'demo-staff'));
-  check('→ FC-IDM student, request APPROVED, student emailed', store.getRaw('users/demo-new/studentType') === 'FC_IDM_STUDENT' && store.getRaw('users/demo-new/idmRequest/state') === 'APPROVED'
-    && Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.to.includes('new.student@nift.ac.in') && m.subject.includes('FC-IDM request approved')));
+  check('→ FC-IDM student, request APPROVED, no email', store.getRaw('users/demo-new/studentType') === 'FC_IDM_STUDENT' && store.getRaw('users/demo-new/idmRequest/state') === 'APPROVED'
+    && !Object.values(store.getRaw('demoOutbox') || {}).some((m) => /FC-IDM/.test(m.subject)));
   await call('syncAccount', {}, 'demo-ad');
   const fcw = await expectOk('Other-dept booking waits for its FC student', call('createBooking', base(D3, 17, 18, { fcStudentNiftId: 'FC/23/014' }), 'demo-ad'));
   const fcwId = booking(fcw.bookingId).fcApprovalId;

@@ -6,7 +6,6 @@ import { useLive, dbQuery } from '../../lib/hooks.js';
 import { call } from '../../firebase.js';
 import { PageHead, Empty, TypeBadge, AccountBadge, Modal, Field, Alert, useToast, StatusBadge } from '../../components/ui.jsx';
 import { useMyBookings } from '../../lib/bookings.js';
-import { useActionDialog } from '../../components/SignApprove.jsx';
 import {
   DEPARTMENTS,
   MAX_SEMESTER,
@@ -35,46 +34,9 @@ export default function Students() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
-  const idmRequests = Object.values(value || {}).filter((u) => u.niftId && u.idmRequest?.state === 'PENDING');
-  const [ask, dialogNode] = useActionDialog();
-  const decideIdm = (u, decision) => ask({
-    title: decision === 'approve' ? `Confirm ${u.name} as FC-IDM` : `Reject FC-IDM request — ${u.name}`,
-    message: decision === 'approve'
-      ? `${u.name} (${u.niftId}, ${u.department}) becomes an FC-IDM student. The student is emailed.`
-      : `${u.name} stays an other-department student. The student is emailed.`,
-    confirmLabel: decision === 'approve' ? 'Confirm FC-IDM' : 'Reject request',
-    tone: decision === 'approve' ? 'primary' : 'danger',
-    remarks: decision === 'approve' ? 'optional' : 'required',
-    remarksLabel: decision === 'approve' ? 'Note (optional)' : 'Reason (sent to the student)',
-    onConfirm: async (remarks) => {
-      await call('updateStudent', { niftId: u.niftId, idmDecision: decision, remarks });
-      return decision === 'approve' ? 'Confirmed as FC-IDM' : 'Request rejected';
-    },
-  });
-
   return (
     <>
       <PageHead eyebrow="Staff Admin" title="Students" sub={`${students.length} student${students.length === 1 ? '' : 's'}`} />
-      {idmRequests.length > 0 && (
-        <section className="card" style={{ marginBottom: 16 }}>
-          <div className="card-head"><h2>FC-IDM requests <span className="tab-n hot">{idmRequests.length}</span></h2></div>
-          <div className="appr-list" style={{ border: 0, borderRadius: 0 }}>
-            {idmRequests.map((u) => (
-              <div key={u.uid} className="appr-row">
-                <div className="appr-when"><b>{u.niftId}</b><span>{u.department} · Sem {u.semester}</span></div>
-                <div className="appr-main">
-                  <div className="appr-name">{u.name}</div>
-                  <div className="small muted">{u.email} · {u.phone} · asked {formatDateTime(u.idmRequest.at)}</div>
-                </div>
-                <div className="appr-actions row" style={{ gap: 8 }}>
-                  <button className="btn btn-sm btn-primary" onClick={() => decideIdm(u, 'approve')}>Confirm FC-IDM</button>
-                  <button className="btn btn-sm btn-danger" onClick={() => decideIdm(u, 'reject')}>Reject</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
       <section className="card card-pad" style={{ marginBottom: 16 }}>
         <div className="grid grid-4">
           <label className="field"><span className="label">Search</span><input className="input" value={filters.text} onChange={set('text')} placeholder="Name, NIFT ID, email, phone" /></label>
@@ -124,7 +86,6 @@ export default function Students() {
           </div>
         )}
       </section>
-      {dialogNode}
       {editing && <EditStudent student={editing} onClose={() => setEditing(null)} />}
       {viewing && <ViewStudent student={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); }} />}
     </>
