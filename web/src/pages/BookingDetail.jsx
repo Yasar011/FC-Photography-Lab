@@ -5,7 +5,7 @@ import { useLive } from '../lib/hooks.js';
 import { call } from '../firebase.js';
 import { StatusBadge, Loading, Alert } from '../components/ui.jsx';
 import { useActionDialog } from '../components/SignApprove.jsx';
-import { BookingFacts, HistoryTimeline, SpecialTracker, SpecialActions, FcccActions, SignaturesPanel } from '../components/BookingBits.jsx';
+import { BookingFacts, HistoryTimeline, SpecialTracker, SpecialActions, FcccActions, FcStepActions, SignaturesPanel } from '../components/BookingBits.jsx';
 import Icon from '../components/Icon.jsx';
 import { STATUS, ACTIVE_STATUSES, STATUS_META } from '@shared/constants.js';
 import { formatDate, formatDateTime, formatRange } from '@shared/calendar.js';
@@ -77,7 +77,14 @@ export default function BookingDetail() {
       </header>
 
       <div className="stack-lg">
-        {b.status === STATUS.PENDING_FC_APPROVAL && <Alert kind="warn">Waiting for {b.fcStudent?.name} ({b.fcStudent?.niftId}) to approve from their own account.</Alert>}
+        {b.status === STATUS.PENDING_FC_APPROVAL && (
+          <Alert kind="warn">
+            <div className="stack" style={{ gap: 8 }}>
+              <span>Waiting for {b.fcStudent?.name} ({b.fcStudent?.niftId}) to approve from their own account.{isAdmin ? ' As FC staff you can also answer on their behalf:' : ''}</span>
+              {isAdmin && <FcStepActions booking={b} role={role} onDialog={ask} />}
+            </div>
+          </Alert>
+        )}
         {b.status === STATUS.FACULTY_CONCERN && (
           <Alert kind="warn">
             <span><b>Faculty concern:</b> {b.facultyConcern?.facultyName} reported “I DID NOT APPROVE THIS” on {formatDateTime(b.facultyConcern?.at)}. {b.facultyConcern?.remarks && `Remarks: ${b.facultyConcern.remarks}. `}The booking is under review — it has not been cancelled.</span>
@@ -134,6 +141,15 @@ export default function BookingDetail() {
                 </span>
               </Alert>
             )}
+            {(b.equipmentLog || (isAdmin && [STATUS.APPROVED, STATUS.COMPLETED].includes(b.status))) && (
+              <section className="card">
+                <div className="card-head"><h2>Equipment</h2><span className="small muted">{(b.equipmentList || []).join(', ')}</span></div>
+                <div className="card-body stack">
+                  <EquipmentLog b={b} />
+                  {isAdmin && <EquipmentActions b={b} ask={ask} />}
+                </div>
+              </section>
+            )}
             {(isOwner || isAdmin || b.fcStudentUid === user.uid || b.seniorUid === user.uid) && (
               <section className="card">
                 <div className="card-head">
@@ -166,4 +182,52 @@ export default function BookingDetail() {
       {dialogNode}
     </>
   );
+}
+
+/** Issued / returned record of the lab equipment for one booking. */
+function EquipmentLog({ b }) {
+  const log = b.equipmentLog || {};
+  if (!log.issued) return <p className="small muted" style={{ margin: 0 }}>Not issued yet.</p>;
+  return (
+    <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
+      <li><b>Issued</b> by {log.issued.byName} · {formatDateTime(log.issued.at)}{log.issued.note ? ` — ${log.issued.note}` : ''}</li>
+      {log.returned ? (
+        <li style={log.returned.condition === 'issue' ? { color: 'var(--red)', fontWeight: 600 } : undefined}>
+          <b>Returned</b> {log.returned.condition === 'issue' ? 'with a problem' : 'OK'} · {log.returned.byName} · {formatDateTime(log.returned.at)}{log.returned.note ? ` — ${log.returned.note}` : ''}
+        </li>
+      ) : (
+        <li className="muted">Not returned yet</li>
+      )}
+    </ul>
+  );
+}
+
+function EquipmentActions({ b, ask }) {
+  const log = b.equipmentLog || {};
+  const record = (action, condition) => ask({
+    title: action === 'issue' ? 'Equipment issued' : condition === 'issue' ? 'Returned with a problem' : 'Equipment returned OK',
+    message: action === 'issue'
+      ? `Record that ${(b.equipmentList || []).join(', ')} was handed to ${b.studentName}.`
+      : condition === 'issue'
+        ? 'Describe what is damaged or missing. It shows in Equipment usage → Problems.'
+        : `Record that everything was returned in good condition by ${b.studentName}.`,
+    confirmLabel: action === 'issue' ? 'Mark issued' : 'Mark returned',
+    tone: condition === 'issue' ? 'danger' : 'primary',
+    remarks: condition === 'issue' ? 'required' : 'optional',
+    remarksLabel: condition === 'issue' ? 'What is the problem?' : 'Note (optional)',
+    onConfirm: async (note) => {
+      await call('recordEquipment', { bookingId: b.id, action, condition, note });
+      return action === 'issue' ? 'Marked as issued' : 'Marked as returned';
+    },
+  });
+  if (!log.issued) return <div className="row"><button className="btn btn-primary" onClick={() => record('issue')}><Icon name="check" /> Mark equipment issued</button></div>;
+  if (!log.returned) {
+    return (
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn btn-green" onClick={() => record('return', 'ok')}><Icon name="check" /> Returned OK</button>
+        <button className="btn btn-danger" onClick={() => record('return', 'issue')}><Icon name="alert" /> Returned with a problem</button>
+      </div>
+    );
+  }
+  return null;
 }

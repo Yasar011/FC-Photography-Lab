@@ -67,6 +67,9 @@ export default function StudentDashboard() {
         );
       })}
 
+      {profile.idmRequest?.state === 'PENDING' && (
+        <Alert kind="info">Your <b>FC-IDM</b> request is waiting for FC staff confirmation. Until then you book as an other-department student.</Alert>
+      )}
       {active && cancelBlock && (
         <Alert kind="error">
           <span><b>As you cancelled booking {cancelBlock.bookingId}, you can't book until {formatDateTime(cancelBlock.until)}.</b> Your other bookings are not affected.</span>

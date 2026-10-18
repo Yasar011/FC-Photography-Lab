@@ -176,6 +176,36 @@ export function SpecialActions({ booking, role, onDialog, compact = false, hideP
 }
 
 /**
+ * Waiting for the FC student (other departments): FC staff can approve or
+ * reject on the FC student's behalf, e.g. when the FC student doesn't respond.
+ */
+export function FcStepActions({ booking, role, onDialog, compact = false }) {
+  if (booking.status !== STATUS.PENDING_FC_APPROVAL || !role || !booking.fcApprovalId) return null;
+  const sz = compact ? 'btn-sm' : '';
+  const fc = booking.fcStudent ? `${booking.fcStudent.name} (${booking.fcStudent.niftId})` : 'the FC student';
+  const answer = (decision) => onDialog({
+    title: decision === 'approve' ? `Approve for ${booking.fcStudent?.name || 'FC student'}` : `Reject ${booking.id}`,
+    message: decision === 'approve'
+      ? `Approve the FC-student step for ${booking.studentName}'s booking on behalf of ${fc}. It then goes to the FC-CC for final approval.`
+      : `Reject ${booking.studentName}'s booking at the FC-student step (on behalf of ${fc}). The slot is released and the student is emailed.`,
+    confirmLabel: decision === 'approve' ? 'Approve for FC student' : 'Reject',
+    tone: decision === 'approve' ? 'primary' : 'danger',
+    remarks: decision === 'approve' ? 'optional' : 'required',
+    remarksLabel: decision === 'approve' ? 'Note (optional)' : 'Reason (sent to the student)',
+    onConfirm: async (reason) => {
+      await call('respondFcApproval', { approvalId: booking.fcApprovalId, decision, reason });
+      return decision === 'approve' ? 'Approved — sent to the FC-CC' : 'Booking rejected';
+    },
+  });
+  return (
+    <div className="row" style={{ gap: 8 }}>
+      <button className={`btn btn-primary ${sz}`} onClick={() => answer('approve')}><Icon name="check" /> Approve for FC student</button>
+      <button className={`btn btn-danger ${sz}`} onClick={() => answer('reject')}>Reject</button>
+    </div>
+  );
+}
+
+/**
  * FC-CC approval of a normal booking (nothing is confirmed without it).
  * FC-CC / Main Admin: Sign & approve. Other admins see who it is waiting for and can reject.
  */

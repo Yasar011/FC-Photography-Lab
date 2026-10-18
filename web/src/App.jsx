@@ -22,6 +22,7 @@ import PrintSheet from './pages/PrintSheet.jsx';
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard.jsx'));
 const AdminCalendar = lazy(() => import('./pages/admin/AdminCalendar.jsx'));
 const AdminBookings = lazy(() => import('./pages/admin/AdminBookings.jsx'));
+const EquipmentUsage = lazy(() => import('./pages/admin/EquipmentUsage.jsx'));
 const StaffBooking = lazy(() => import('./pages/admin/StaffBooking.jsx'));
 const Students = lazy(() => import('./pages/admin/Students.jsx'));
 const SpecialApprovals = lazy(() => import('./pages/admin/SpecialApprovals.jsx'));
@@ -134,6 +135,7 @@ export default function App() {
         <Route path="admin" element={admin(ALL_ADMINS, <AdminDashboard />)} />
         <Route path="admin/calendar" element={admin(ALL_ADMINS, <AdminCalendar />)} />
         <Route path="admin/bookings" element={admin(ALL_ADMINS, <AdminBookings />)} />
+        <Route path="admin/equipment" element={admin(ALL_ADMINS, <EquipmentUsage />)} />
         <Route path="admin/special" element={admin(ALL_ADMINS, <SpecialApprovals />)} />
         <Route path="admin/approvals" element={admin(ALL_ADMINS, <BookingApprovals />)} />
         <Route path="admin/concerns" element={admin(ALL_ADMINS, <FacultyConcerns />)} />

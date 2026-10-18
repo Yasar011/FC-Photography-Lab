@@ -34,7 +34,8 @@
         "email",
         "status",
         "department",
-        "semester"
+        "semester",
+        "idmRequest/state"
       ],
       "$uid": {
         ".read": "(auth != null && auth.token.email_verified === true && auth.token.email.toLowerCase().matches(/^[^@]+@nift\\.ac\\.in$/)) && auth.uid === $uid",

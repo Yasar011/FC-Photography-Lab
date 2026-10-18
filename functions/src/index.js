@@ -11,6 +11,7 @@ export {
   getSignature,
   lookupStudent,
   searchStudents,
+  recordEquipment,
 } from './bookings.js';
 export {
   respondFcApproval,

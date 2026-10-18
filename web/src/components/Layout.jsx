@@ -47,6 +47,8 @@ export default function Layout() {
   const special = useCount('bookings', 'status', STATUS.PENDING_SPECIAL_APPROVAL, isAdmin);
   const concerns = useCount('bookings', 'status', STATUS.FACULTY_CONCERN, isAdmin);
   const fcccPending = useCount('bookings', 'status', STATUS.PENDING_FCCC_APPROVAL, isAdmin);
+  const fcStepPending = useCount('bookings', 'status', STATUS.PENDING_FC_APPROVAL, isAdmin);
+  const idmPending = useCount('users', 'idmRequest/state', 'PENDING', isAdmin);
   const fcQ = profile?.niftId ? dbQuery('fcApprovals', orderByChild('fcStudentUid'), equalTo(user.uid)) : null;
   const { value: fcMine } = useLive(fcQ, [profile?.niftId, user?.uid]);
   const fcPending = Object.values(fcMine || {}).filter((a) => a.state === FC_APPROVAL_STATE.PENDING).length;
@@ -60,7 +62,7 @@ export default function Layout() {
       <header className="appbar">
         <button className="icon-btn" onClick={toggleNav} aria-label="Main menu">
           <Icon name="menu" />
-          {fcPending + special + concerns + fcccPending > 0 && <span className="dot">{fcPending + special + concerns + fcccPending}</span>}
+          {fcPending + special + concerns + fcccPending + fcStepPending > 0 && <span className="dot">{fcPending + special + concerns + fcccPending + fcStepPending}</span>}
         </button>
         <Link to="/" className="brand" style={{ textDecoration: 'none' }}>
           <span className="brand-mark"><Camera /></span>
@@ -117,10 +119,11 @@ export default function Layout() {
               <Item to="/admin" icon="home" end>Dashboard</Item>
               <Item to="/admin/calendar" icon="calendar">Lab calendar</Item>
               <Item to="/admin/special" icon="stamp" count={special} hot>Special approvals</Item>
-              <Item to="/admin/approvals" icon="checkCircle" count={fcccPending} hot>Approvals</Item>
+              <Item to="/admin/approvals" icon="checkCircle" count={fcccPending + fcStepPending} hot>Approvals</Item>
               <Item to="/admin/concerns" icon="flag" count={concerns} hot>Faculty concerns</Item>
               <Item to="/admin/bookings" icon="list">All bookings</Item>
-              {isStaff && <Item to="/admin/students" icon="users">Students</Item>}
+              <Item to="/admin/equipment" icon="camera">Equipment usage</Item>
+              {isStaff && <Item to="/admin/students" icon="users" count={idmPending} hot>Students</Item>}
               {isStaff && <Item to="/admin/availability" icon="sun">Holidays & overrides</Item>}
               {isStaff && <Item to="/admin/emails" icon="mail">Email log</Item>}
               <Item to="/admin/audit" icon="history">Audit log</Item>

@@ -1,6 +1,9 @@
 // Sign-in sync, student registration and profile updates.
 import { onCall } from 'firebase-functions/v2/https';
 
+import { sendAll, adminEmails } from './mail.js';
+import * as N from './notify.js';
+
 import {
   db,
   fail,
@@ -84,6 +87,8 @@ export const registerStudent = onCall(async (request) => {
 
   const now = Date.now();
   const studentType = defaultStudentType(department);
+  // Other-department students may say they are FC-IDM; FC staff confirm it.
+  const idmRequested = department !== 'FC' && d.idmRequest === true;
   const profile = {
     uid: actor.uid,
     name,
@@ -95,6 +100,7 @@ export const registerStudent = onCall(async (request) => {
     studentType,
     status: ACCOUNT_STATUS.ACTIVE,
     bookingAccess: true,
+    ...(idmRequested ? { idmRequest: { state: 'PENDING', at: now } } : {}),
     createdAt: now,
     updatedAt: now,
     lastLoginAt: now,
@@ -106,14 +112,17 @@ export const registerStudent = onCall(async (request) => {
   try {
     await db.ref().update({
       [`users/${actor.uid}`]: profile,
-      [`students/${key}`]: { uid: actor.uid, niftId, name, email: actor.email, department, semester, studentType, status: profile.status, registeredAt: now },
+      [`students/${key}`]: { uid: actor.uid, niftId, name, email: actor.email, department, semester, studentType, status: profile.status, registeredAt: now, ...(idmRequested ? { idmRequest: 'PENDING' } : {}) },
       [ap]: av,
     });
   } catch (err) {
     await db.ref(`students/${key}`).remove();
     throw err;
   }
-  return { ok: true };
+  if (idmRequested) {
+    await sendAll([N.idmRequestEmail(profile, await adminEmails(['staff', 'main']))]);
+  }
+  return { ok: true, idmRequested };
 });
 
 /** Students may only change their phone number themselves. */

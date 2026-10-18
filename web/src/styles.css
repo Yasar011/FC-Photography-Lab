@@ -565,3 +565,11 @@ button.allday-chip { cursor: pointer; }
 .people-ol { margin: 0; padding-left: 18px; }
 .people-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
 .people-table th, .people-table td { border: 1px solid #999; padding: 3px 6px; text-align: left; }
+
+/* Equipment usage tracker */
+.usage-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.usage-bar span { display: block; height: 100%; background: var(--primary); border-radius: 4px; }
+.usage-list { list-style: none; margin: 0; padding: 0 16px 12px; }
+.usage-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.usage-list li:last-child { border-bottom: 0; }
+.usage-list li.late a b { color: var(--red); }

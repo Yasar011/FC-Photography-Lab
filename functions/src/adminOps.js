@@ -1,5 +1,8 @@
 // Administrative operations: calendar overrides, holidays, students, admins, settings.
 import { onCall } from 'firebase-functions/v2/https';
+
+import { sendAll } from './mail.js';
+import * as N from './notify.js';
 import { getAuth } from 'firebase-admin/auth';
 
 import {
@@ -208,7 +211,7 @@ export const updateStudent = onCall(async (request) => {
     phone: d.phone !== undefined ? str(d.phone, 20) : user.phone,
     department: d.department !== undefined ? String(d.department).toUpperCase() : user.department,
     semester: d.semester !== undefined ? Number(d.semester) : Number(user.semester),
-    studentType: d.studentType !== undefined ? d.studentType : user.studentType,
+    studentType: d.idmDecision === 'approve' ? STUDENT_TYPES.FC_IDM : d.studentType !== undefined ? d.studentType : user.studentType,
     status: d.status !== undefined ? d.status : user.status,
   };
   if (next.name.length < 3) fail('invalid-argument', 'Invalid name.');
@@ -222,6 +225,8 @@ export const updateStudent = onCall(async (request) => {
   const changes = {};
   for (const k of Object.keys(next)) if (next[k] !== user[k]) changes[k] = { from: user[k] ?? null, to: next[k] };
   const liftBlock = d.clearBookingBlock === true && Boolean(user.bookingBlock);
+  const idmDecision = ['approve', 'reject'].includes(d.idmDecision) && user.idmRequest?.state === 'PENDING' ? d.idmDecision : null;
+  if (idmDecision) changes.idmRequest = { from: 'PENDING', to: idmDecision === 'approve' ? 'APPROVED' : 'REJECTED' };
   if (liftBlock) changes.bookingBlock = { from: user.bookingBlock.until, to: null };
   if (!Object.keys(changes).length) return { ok: true, changed: false };
 
@@ -230,10 +235,16 @@ export const updateStudent = onCall(async (request) => {
   for (const [k, v] of Object.entries(next)) updates[`users/${reg.uid}/${k}`] = v;
   updates[`users/${reg.uid}/updatedAt`] = TS;
   if (liftBlock) updates[`users/${reg.uid}/bookingBlock`] = null;
+  if (idmDecision) {
+    updates[`users/${reg.uid}/idmRequest`] = { state: changes.idmRequest.to, at: user.idmRequest.at, decidedAt: Date.now(), decidedBy: actor.name, remarks: str(d.remarks, 500) || null };
+    updates[`students/${key}/idmRequest`] = changes.idmRequest.to;
+  }
   for (const k of ['name', 'department', 'semester', 'studentType', 'status']) updates[`students/${key}/${k}`] = next[k];
   updates[`students/${key}/email`] = user.email || null;
   updates[`students/${key}/bookingAccess`] = next.bookingAccess ?? user.bookingAccess ?? true;
-  const action = liftBlock && Object.keys(changes).length === 1
+  const action = idmDecision
+    ? (idmDecision === 'approve' ? 'FC_IDM_REQUEST_APPROVED' : 'FC_IDM_REQUEST_REJECTED')
+    : liftBlock && Object.keys(changes).length === 1
     ? 'BOOKING_BLOCK_LIFTED'
     : changes.studentType
     ? 'STUDENT_CLASSIFICATION_CHANGED'
@@ -245,6 +256,7 @@ export const updateStudent = onCall(async (request) => {
   const [ap, av] = auditEntry(by, action, { niftId: user.niftId, details: { changes, remarks: str(d.remarks, 500) || null } });
   updates[ap] = av;
   await db.ref().update(updates);
+  if (idmDecision) await sendAll([N.idmDecisionEmail({ ...user, ...next }, changes.idmRequest.to, str(d.remarks, 500))]);
   return { ok: true, changed: true };
 });
 

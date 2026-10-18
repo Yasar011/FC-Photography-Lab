@@ -148,7 +148,7 @@ const rules = {
 
     users: {
       '.read': ADMIN,
-      '.indexOn': ['niftId', 'email', 'status', 'department', 'semester'],
+      '.indexOn': ['niftId', 'email', 'status', 'department', 'semester', 'idmRequest/state'],
       $uid: {
         '.read': `${V} && auth.uid === $uid`,
         '.write': or(

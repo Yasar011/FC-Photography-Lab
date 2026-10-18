@@ -34,8 +34,12 @@ export const respondFcApproval = onCall(CALL_OPTS, async (request) => {
   const approvalRef = db.ref(`fcApprovals/${approvalId}`);
   const approval = (await approvalRef.get()).val();
   if (!approval) fail('not-found', 'Approval request not found.');
-  if (approval.fcStudentUid !== actor.uid) fail('permission-denied', 'This approval request is assigned to another student.');
-  if (actor.profile?.status !== ACCOUNT_STATUS.ACTIVE) fail('failed-precondition', 'Your account is not active.');
+  // The named FC student answers — or FC staff (any admin) answers on their behalf.
+  const onBehalf = approval.fcStudentUid !== actor.uid && ADMIN_ROLES.includes(actor.role);
+  if (approval.fcStudentUid !== actor.uid && !onBehalf) fail('permission-denied', 'This approval request is assigned to another student.');
+  if (!onBehalf && actor.profile?.status !== ACCOUNT_STATUS.ACTIVE) fail('failed-precondition', 'Your account is not active.');
+  if (onBehalf && decision === 'reject' && !reason) fail('invalid-argument', 'Please enter a reason for rejection.');
+  const byName = onBehalf ? `${actor.name} (FC staff, for FC student ${approval.fcStudentName})` : actor.name;
 
   // Claim the decision atomically so a double click cannot approve twice.
   const newState = decision === 'approve' ? FC_APPROVAL_STATE.APPROVED : FC_APPROVAL_STATE.REJECTED;
@@ -55,9 +59,14 @@ export const respondFcApproval = onCall(CALL_OPTS, async (request) => {
       if (b.status !== STATUS.PENDING_FC_APPROVAL && !inConcern) {
         fail('failed-precondition', 'This booking is no longer waiting for FC approval.');
       }
-      b.fcApproval = { state: newState, byUid: actor.uid, byName: actor.name, at: Date.now(), reason: reason || null };
+      b.fcApproval = { state: newState, byUid: actor.uid, byName, at: Date.now(), reason: reason || null, ...(onBehalf ? { onBehalf: true } : {}) };
       if (decision === 'approve') {
-        addHistory(b, { status: STATUS.FC_APPROVED, event: 'FC STUDENT APPROVED', actor: by });
+        addHistory(b, {
+          status: STATUS.FC_APPROVED,
+          event: onBehalf ? 'FC STUDENT STEP APPROVED BY FC STAFF' : 'FC STUDENT APPROVED',
+          actor: by,
+          note: onBehalf ? `On behalf of ${approval.fcStudentName}${reason ? ` — ${reason}` : ''}` : null,
+        });
         const next = afterFcStatus(b);
         if (inConcern) {
           b.facultyConcern.previousStatus = next; // stays under review
@@ -71,8 +80,8 @@ export const respondFcApproval = onCall(CALL_OPTS, async (request) => {
         }
       } else {
         b.status = STATUS.REJECTED;
-        b.rejection = { byUid: actor.uid, byName: actor.name, role: 'fc_student', at: Date.now(), reason: reason || 'Rejected by FC student' };
-        addHistory(b, { event: 'FC STUDENT REJECTED', actor: by, note: reason });
+        b.rejection = { byUid: actor.uid, byName, role: onBehalf ? actor.role : 'fc_student', at: Date.now(), reason: reason || 'Rejected by FC student' };
+        addHistory(b, { event: onBehalf ? 'FC STUDENT STEP REJECTED BY FC STAFF' : 'FC STUDENT REJECTED', actor: by, note: reason });
       }
       return b;
     }));

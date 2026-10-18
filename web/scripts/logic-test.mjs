@@ -232,7 +232,33 @@ try {
   check('approved booking in the past → COMPLETED', booking(fc4.bookingId).status === STATUS.COMPLETED);
   check('pending booking in the past → REJECTED (expired)', booking(oth3.bookingId).status === STATUS.REJECTED && booking(oth3.bookingId).rejection?.expired);
 
-  // ---- 10. Data integrity ----
+  // ---- 10. FC-IDM request, staff answering for the FC student, equipment ----
+  console.log('\n10. FC-IDM request · staff for FC student · equipment check-out');
+  await call('syncAccount', {}, 'demo-new');
+  await expectOk('Other-dept student registers and ticks "I am FC-IDM"', call('registerStudent', { name: 'New Student', niftId: 'FD/25/077', department: 'FD', semester: 3, phone: '+91 90000 11111', idmRequest: true }, 'demo-new'));
+  const nu = store.getRaw('users/demo-new');
+  check('stays other-department until staff confirm; request PENDING', nu.studentType === 'OTHER_DEPT_STUDENT' && nu.idmRequest?.state === 'PENDING');
+  check('FC staff emailed about the FC-IDM request', Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.subject.includes('FC-IDM request') && m.to.includes('prakash.choudhary@nift.ac.in')));
+  await expectFail('Student confirms their own FC-IDM request', call('updateStudent', { niftId: 'FD/25/077', idmDecision: 'approve' }, 'demo-new'));
+  await expectOk('Staff confirm FC-IDM', call('updateStudent', { niftId: 'FD/25/077', idmDecision: 'approve', remarks: 'IDM list checked' }, 'demo-staff'));
+  check('→ FC-IDM student, request APPROVED, student emailed', store.getRaw('users/demo-new/studentType') === 'FC_IDM_STUDENT' && store.getRaw('users/demo-new/idmRequest/state') === 'APPROVED'
+    && Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.to.includes('new.student@nift.ac.in') && m.subject.includes('FC-IDM request approved')));
+  await call('syncAccount', {}, 'demo-ad');
+  const fcw = await expectOk('Other-dept booking waits for its FC student', call('createBooking', base(D3, 17, 18, { fcStudentNiftId: 'FC/23/014' }), 'demo-ad'));
+  const fcwId = booking(fcw.bookingId).fcApprovalId;
+  await expectFail('Another student answers for the FC student', call('respondFcApproval', { approvalId: fcwId, decision: 'approve' }, 'demo-fc2'));
+  await expectFail('Staff reject for the FC student without a reason', call('respondFcApproval', { approvalId: fcwId, decision: 'reject' }, 'demo-staff'), /reason/i);
+  await expectOk('Staff approve on behalf of the FC student', call('respondFcApproval', { approvalId: fcwId, decision: 'approve' }, 'demo-staff'));
+  check('→ waiting for FC-CC, marked "FC staff, for FC student"', booking(fcw.bookingId).status === STATUS.PENDING_FCCC_APPROVAL && booking(fcw.bookingId).fcApproval?.onBehalf === true && /FC staff/.test(booking(fcw.bookingId).fcApproval.byName));
+  await call('adminBookingDecision', { bookingId: fcw.bookingId, decision: 'approve' }, 'demo-fccc');
+  await expectFail('Student records equipment', call('recordEquipment', { bookingId: fcw.bookingId, action: 'issue' }, 'demo-ad'));
+  await expectFail('Return before issue', call('recordEquipment', { bookingId: fcw.bookingId, action: 'return' }, 'demo-staff'), /issued first/i);
+  await expectOk('Staff mark equipment issued', call('recordEquipment', { bookingId: fcw.bookingId, action: 'issue' }, 'demo-staff'));
+  await expectFail('Returned with a problem but no description', call('recordEquipment', { bookingId: fcw.bookingId, action: 'return', condition: 'issue' }, 'demo-staff'), /describe/i);
+  await expectOk('Staff mark returned with a problem', call('recordEquipment', { bookingId: fcw.bookingId, action: 'return', condition: 'issue', note: 'Softbox rod bent' }, 'demo-staff'));
+  check('equipment log saved (issued + returned with problem)', booking(fcw.bookingId).equipmentLog?.issued && booking(fcw.bookingId).equipmentLog?.returned?.condition === 'issue');
+
+  // ---- 11. Data integrity ----
   console.log('\n10. Data integrity');
   const all = store.getRaw('bookings') || {};
   const slots = store.getRaw('bookingSlots') || {};

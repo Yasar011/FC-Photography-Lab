@@ -358,3 +358,47 @@ export function concernResolvedEmail(b, decisionLabel, remarks) {
     },
   };
 }
+
+// ---- FC-IDM classification ----------------------------------------------------
+const studentRows = (u) => [
+  ['Student', u.name], ['NIFT ID', u.niftId], ['Email', u.email], ['Phone', u.phone],
+  ['Department', u.department], ['Semester', u.semester],
+];
+
+export function idmRequestEmail(u, to) {
+  return {
+    type: 'idm_request',
+    to,
+    subject: `FC Photography Lab – FC-IDM request – ${u.name} (${u.niftId})`,
+    bookingId: null,
+    trigger: 'registration.idm',
+    content: {
+      heading: 'FC-IDM student request',
+      intro: [`${u.name} registered as an ${u.department} student and says they are an FC-IDM student. Please confirm or reject it under Students → FC-IDM requests.`],
+      rows: studentRows(u),
+      action: { label: 'Open Students', url: appLink('/admin/students') },
+    },
+  };
+}
+
+export function idmDecisionEmail(u, state, remarks) {
+  const ok = state === 'APPROVED';
+  return {
+    type: 'idm_decision',
+    to: u.email,
+    subject: `FC Photography Lab – FC-IDM request ${ok ? 'approved' : 'not approved'}`,
+    bookingId: null,
+    trigger: 'student.idm',
+    content: {
+      heading: ok ? 'You are now an FC-IDM student' : 'FC-IDM request not approved',
+      intro: [
+        ok
+          ? 'The FC staff confirmed you as an FC-IDM student. Your bookings now follow the FC-IDM rules.'
+          : 'The FC staff could not confirm you as an FC-IDM student. You can still book as an other-department student.',
+      ],
+      rows: studentRows(u),
+      extraRows: remarks ? [['Remarks', remarks]] : [],
+      action: { label: 'Open the lab portal', url: appLink('/') },
+    },
+  };
+}

@@ -632,3 +632,38 @@ export const lookupStudent = onCall(async (request) => {
     },
   };
 });
+
+// ---- Equipment check-out / return (FC staff) -----------------------------------
+export const recordEquipment = onCall(async (request) => {
+  const actor = await getActor(request);
+  requireRole(actor, ADMIN_ROLES, 'Only FC staff can record equipment.');
+  const { bookingId, action } = request.data || {};
+  const note = str(request.data?.note, 500);
+  const condition = request.data?.condition === 'issue' ? 'issue' : 'ok';
+  if (!['issue', 'return'].includes(action)) fail('invalid-argument', 'Invalid action.');
+  if (action === 'return' && condition === 'issue' && !note) fail('invalid-argument', 'Please describe the problem (damage / missing item).');
+  const by = actorRef(actor);
+  const { after } = await mutateBooking(bookingId, (b) => {
+    if (![STATUS.APPROVED, STATUS.COMPLETED].includes(b.status)) fail('failed-precondition', 'Only approved bookings can have equipment issued.');
+    const log = b.equipmentLog || {};
+    if (action === 'issue') {
+      if (log.issued) fail('failed-precondition', 'Equipment was already issued for this booking.');
+      log.issued = { at: Date.now(), byUid: actor.uid, byName: actor.name, items: b.equipmentList || [], note: note || null };
+    } else {
+      if (!log.issued) fail('failed-precondition', 'Mark the equipment as issued first.');
+      if (log.returned) fail('failed-precondition', 'Equipment was already returned.');
+      log.returned = { at: Date.now(), byUid: actor.uid, byName: actor.name, condition, note: note || null };
+    }
+    b.equipmentLog = log;
+    return addHistory(b, {
+      event: action === 'issue' ? 'EQUIPMENT ISSUED' : condition === 'issue' ? 'EQUIPMENT RETURNED — PROBLEM REPORTED' : 'EQUIPMENT RETURNED — OK',
+      actor: by,
+      note: note || null,
+    });
+  });
+  const [ap, av] = auditEntry(by, action === 'issue' ? 'EQUIPMENT_ISSUED' : 'EQUIPMENT_RETURNED', {
+    bookingId: after.id, niftId: after.niftId, details: { condition: action === 'return' ? condition : null, note },
+  });
+  await db.ref(ap).set(av);
+  return { ok: true, equipmentLog: after.equipmentLog };
+});

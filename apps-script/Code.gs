@@ -123,6 +123,11 @@ function checkRecipients(mail, b, idToken) {
   }
   const admins = readDb('admins', idToken) || {};
   Object.keys(admins).forEach((k) => add(admins[k] && admins[k].email));
+  // Account emails (e.g. "FC-IDM request approved") go to the registered student.
+  if (!b && /^idm_/.test(String(mail.type || ''))) {
+    const students = readDb('students', idToken) || {};
+    Object.keys(students).forEach((k) => add(students[k] && students[k].email));
+  }
   // Addresses told when the FC-CC approves (Settings → "Email when the FC-CC approves").
   const notify = readDb('settings/bookingRules/approvalNotifyEmails', idToken);
   (Array.isArray(notify) ? notify : ['admin.jodhpur@nift.ac.in']).forEach(add);

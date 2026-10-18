@@ -17,10 +17,11 @@ export default function Register() {
     phone: '',
     department: '',
     semester: '',
+    idmRequest: false,
   });
   if (profile?.niftId) return <Navigate to="/" replace />;
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value, ...(k === 'department' ? { semester: '' } : {}) }));
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value, ...(k === 'department' ? { semester: '', idmRequest: false } : {}) }));
   const maxSem = MAX_SEMESTER[form.department] || 8;
 
   const submit = (e) => {
@@ -28,7 +29,7 @@ export default function Register() {
     if (!isValidNiftId(form.niftId)) return setError('Please enter a valid NIFT ID (letters, numbers, "/" or "-").');
     if (!isPhone(form.phone)) return setError('Please enter a valid phone number.');
     run(async () => {
-      await call('registerStudent', { ...form, niftId: normalizeNiftId(form.niftId), semester: Number(form.semester) });
+      await call('registerStudent', { ...form, niftId: normalizeNiftId(form.niftId), semester: Number(form.semester), idmRequest: form.department !== 'FC' && form.idmRequest === true });
       navigate('/', { replace: true });
     });
   };
@@ -81,10 +82,16 @@ export default function Register() {
               </select>
             </Field>
           </div>
-          <p className="tiny muted">
-            Your student type (FC / FC-IDM / Other Department) is set by the FC Staff. Semesters update automatically
-            each academic term.
-          </p>
+          {form.department === 'FC' && (
+            <p className="small" style={{ margin: 0 }}>✓ You will be registered as an <b>FC student</b>.</p>
+          )}
+          {form.department && form.department !== 'FC' && (
+            <label className="check sign-check">
+              <input type="checkbox" checked={form.idmRequest} onChange={(e) => setForm((f) => ({ ...f, idmRequest: e.target.checked }))} />
+              <span><b>I am an FC-IDM student</b> (Fashion Communication interdisciplinary minor). <span className="muted">FC staff will confirm this. Until then you book as an other-department student.</span></span>
+            </label>
+          )}
+          <p className="tiny muted">Semesters update automatically each academic term.</p>
           <Alert kind="error">{error}</Alert>
           <div className="row-between">
             <button type="button" className="btn btn-ghost" onClick={signOut}>Sign out</button>
