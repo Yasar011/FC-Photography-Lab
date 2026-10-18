@@ -179,16 +179,23 @@ function sendMail(mail, props, booking) {
   const test = props.getProperty('TEST_MODE') !== 'false';
   const testTo = props.getProperty('TEST_EMAIL') || Session.getEffectiveUser().getEmail();
   const bookingId = booking && booking.id;
+  // Live mode: fc.jodhpur (the sheet owner) also gets a hidden copy of every email.
+  // Turn off with stopCopies(), back on with sendCopies().
+  const owner = Session.getEffectiveUser().getEmail();
+  const copy = !test && props.getProperty('COPY_ALL') !== 'false' ? (props.getProperty('COPY_TO') || owner) : '';
   const results = recipients.map(function (real) {
     const to = test ? testTo : real;
+    const bcc = copy && copy.toLowerCase() !== String(to).toLowerCase() ? copy : '';
     const subject = (test ? '[TEST → ' + real + '] ' : '') + (bookingId ? threadSubject(booking) : (mail.subject || 'FC Photography Lab'));
     const html = updateBanner(mail.subject) + (mail.html || '');
     // One conversation per booking and person: later steps are replies to the first email.
-    if (bookingId && gmailApiOn()) return sendThreaded((test ? 'T|' : '') + bookingId + '|' + real, to, subject, mail.text || '', html, props);
-    MailApp.sendEmail(to, subject, mail.text || '', mailOptions(html, props));
+    if (bookingId && gmailApiOn()) return sendThreaded((test ? 'T|' : '') + bookingId + '|' + real, to, subject, mail.text || '', html, props, bcc);
+    const opts = mailOptions(html, props);
+    if (bcc) opts.bcc = bcc;
+    MailApp.sendEmail(to, subject, mail.text || '', opts);
     return 'sent';
   });
-  return results.join(', ') + (test ? ' (TEST → ' + testTo + ')' : '');
+  return results.join(', ') + (test ? ' (TEST → ' + testTo + ')' : copy ? ' (copy to ' + copy + ')' : '');
 }
 
 function mailOptions(html, props) {
@@ -233,10 +240,10 @@ function findThread(key) {
   return null;
 }
 
-function sendThreaded(key, to, subject, text, html, props) {
+function sendThreaded(key, to, subject, text, html, props, bcc) {
   const th = findThread(key);
   const subj = th ? 'Re: ' + th.subject : subject;
-  const raw = buildMime(to, subj, text, html, th ? th.messageId : null, props);
+  const raw = buildMime(to, subj, text, html, th ? th.messageId : null, props, bcc);
   const req = { raw: raw };
   if (th && th.threadId) req.threadId = th.threadId;
   const sent = Gmail.Users.Messages.send(req, 'me');
@@ -249,7 +256,7 @@ function sendThreaded(key, to, subject, text, html, props) {
   return 'sent (new conversation)';
 }
 
-function buildMime(to, subject, text, html, inReplyTo, props) {
+function buildMime(to, subject, text, html, inReplyTo, props, bcc) {
   const enc = function (s) { return Utilities.base64Encode(s, Utilities.Charset.UTF_8); };
   const wrap = function (s) { return s.replace(/(.{76})/g, '$1\r\n'); };
   const name = props.getProperty('SENDER_NAME') || 'FC Photography Lab — NIFT Jodhpur';
@@ -257,6 +264,7 @@ function buildMime(to, subject, text, html, inReplyTo, props) {
   const head = [
     'From: =?UTF-8?B?' + enc(name) + '?= <' + Session.getEffectiveUser().getEmail() + '>',
     'To: ' + to,
+    ...(bcc ? ['Bcc: ' + bcc] : []),
     'Subject: =?UTF-8?B?' + enc(subject) + '?=',
     'MIME-Version: 1.0',
   ];
@@ -388,6 +396,14 @@ function sendTest() {
 function goLive() {
   PropertiesService.getScriptProperties().setProperty('TEST_MODE', 'false');
   Logger.log('LIVE: emails now go to the real students and faculty.');
+}
+
+/** Stop / start the hidden copy of every email to the sheet owner (live mode). */
+function stopCopies() {
+  PropertiesService.getScriptProperties().setProperty('COPY_ALL', 'false');
+}
+function sendCopies() {
+  PropertiesService.getScriptProperties().setProperty('COPY_ALL', 'true');
 }
 
 /** Back to test mode (all emails to you). */

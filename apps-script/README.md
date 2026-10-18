@@ -38,6 +38,9 @@ The website now sends a proof of who is signed in instead of a secret. The new `
    ```
    then deploy the functions again. SMTP is not needed. If the deploy asks for `SMTP_PASS`, enter any value, such as `unused`.
 
+### Copy of every email to the sheet owner
+In live mode, the sheet owner (fc.jodhpur@nift.ac.in) gets a **hidden copy (BCC)** of every email, inside the same conversation. Run **`stopCopies`** to turn this off and **`sendCopies`** to turn it back on. Set the `COPY_TO` script property to send the copies to a different address.
+
 ### Test mode → live
 
 After `setup`, the script is in **TEST MODE**: every email goes to **you**, with the real recipient shown in the subject (`[TEST → student@nift.ac.in] …`).
