@@ -41,6 +41,21 @@ The website now sends a proof of who is signed in instead of a secret. The new `
 ### Copy of every email to the sheet owner
 In live mode, the sheet owner (fc.jodhpur@nift.ac.in) gets a **hidden copy (BCC)** of every email, inside the same conversation. Run **`stopCopies`** to turn this off and **`sendCopies`** to turn it back on. Set the `COPY_TO` script property to send the copies to a different address.
 
+### Daily summary to the FC-CC (about 4:15 PM)
+Every day at about 4:15 PM the FC-CC and the Main Admin get one email listing:
+- bookings waiting for approval, marked **TODAY** when they're today;
+- special bookings ready for final approval;
+- faculty concerns;
+- for information: bookings waiting for the FC student, and special forms not yet printed.
+
+Set it up once:
+1. Open the Firebase service-account key file in Notepad and copy everything.
+2. In Apps Script, go to **Project Settings ⚙️ → Script properties → Add script property**. Name it `SA_JSON` and paste the copied text as the value. Save.
+3. Choose **`setupDailySummary`**, click **▶ Run**, and allow the permissions.
+4. Optional: choose **`dailySummary`** and click **▶ Run** to get one now.
+
+The key stays in the script's private settings, so only people who can edit this Apps Script project can see it.
+
 ### Test mode → live
 
 After `setup`, the script is in **TEST MODE**: every email goes to **you**, with the real recipient shown in the subject (`[TEST → student@nift.ac.in] …`).

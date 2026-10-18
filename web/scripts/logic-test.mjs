@@ -90,6 +90,9 @@ try {
     await call('registerStudent', { name: a.name, ...a.profile }, u);
   }
   await call('updateStudent', { niftId: 'FC/22/011', status: 'GRADUATED', remarks: 'test' }, 'demo-staff');
+  // Tests run at any time of day: relax booking hours / weekly limits (each is tested on purpose below).
+  const RELAX = { regularBookingOpenHour: 0, regularBookingCloseHour: 24, specialBookingOpenHour: 0, specialBookingCloseHour: 24, specialMinNoticeHours: 0, weeklyMaxBookings: 0, weeklyMaxHours: 0 };
+  store.update('settings/bookingRules', RELAX);
   ok(`accounts ready · dates D1=${D1} D2=${D2} D3=${D3} WE=${WE} holiday=${DH}`);
   await expectFail('Same NIFT ID cannot register twice', call('registerStudent', { name: 'Fake Aarav', niftId: 'FC/23/014', department: 'FC', semester: 6, phone: '+91 90000 00000' }, 'demo-new'), /already registered/);
 
@@ -168,7 +171,16 @@ try {
   const mine = await expectOk('Meghna books D2 21–22', call('createBooking', base(D2, 21, 22), 'demo-fc3'));
   await expectFail('Another student cancels it', call('cancelBooking', { bookingId: mine.bookingId }, 'demo-fc'));
   await expectFail('FC Lab Assistant cancels it (FC-CC only)', call('cancelBooking', { bookingId: mine.bookingId, reason: 'x' }, 'demo-staff'));
-  const cr = await expectOk('Owner cancels', call('cancelBooking', { bookingId: mine.bookingId, reason: 'Model unavailable' }, 'demo-fc3'));
+  const early = await expectOk('Meghna books and cancels while still pending', call('createBooking', base(DH, 20, 21), 'demo-fc3'));
+  const ce = await expectOk('Cancel a pending booking', call('cancelBooking', { bookingId: early.bookingId }, 'demo-fc3'));
+  check('→ no block for cancelling a pending booking', !ce?.blockedUntil && !store.getRaw('users/demo-fc3/bookingBlock'));
+  await call('adminBookingDecision', { bookingId: mine.bookingId, decision: 'approve' }, 'demo-fccc');
+  store.update('settings/bookingRules', { cancelBlockWithinHours: 1 });
+  const far = await expectOk('Approved booking cancelled long before the start', call('cancelBooking', { bookingId: (await call('createBooking', base(DH, 21, 22), 'demo-fc3').then(async (r) => { await call('adminBookingDecision', { bookingId: r.bookingId, decision: 'approve' }, 'demo-fccc'); return r; })).bookingId }, 'demo-fc3'));
+  check('→ no block (more than the block window before the start)', !far?.blockedUntil);
+  store.update('settings/bookingRules', { cancelBlockWithinHours: 720 });
+  const cr = await expectOk('Owner cancels an APPROVED booking close to its start', call('cancelBooking', { bookingId: mine.bookingId, reason: 'Model unavailable' }, 'demo-fc3'));
+  check('admin.jodhpur told the approved booking is cancelled', Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.to.includes('admin.jodhpur@nift.ac.in') && m.subject.startsWith('CANCELLED') && m.subject.includes(mine.bookingId)));
   check('→ CANCELLED_BY_STUDENT, slot freed', booking(mine.bookingId).status === STATUS.CANCELLED_BY_STUDENT && !Object.values(store.getRaw(`bookingSlots/${D2}`) || {}).some((s) => s.bookingId === mine.bookingId));
   check('4-day block started', cr?.blockedUntil > Date.now() + 3.9 * 86400000);
   await expectFail('Blocked student books again', call('createBooking', base(D3, 21, 22), 'demo-fc3'), /As you cancelled booking/);
@@ -258,8 +270,38 @@ try {
   await expectOk('Staff mark returned with a problem', call('recordEquipment', { bookingId: fcw.bookingId, action: 'return', condition: 'issue', note: 'Softbox rod bent' }, 'demo-staff'));
   check('equipment log saved (issued + returned with problem)', booking(fcw.bookingId).equipmentLog?.issued && booking(fcw.bookingId).equipmentLog?.returned?.condition === 'issue');
 
-  // ---- 11. Data integrity ----
-  console.log('\n10. Data integrity');
+  // ---- 11. Booking hours and fair-use limits ----
+  console.log('\n11. Booking hours · per-day and per-week limits');
+  await call('removeHoliday', { date: DH }, 'demo-staff'); // the test holiday from section 8
+  store.update('settings/bookingRules', { regularBookingOpenHour: 0, regularBookingCloseHour: 0 });
+  await expectFail('Regular booking outside booking hours', call('createBooking', base(DH, 17, 18), 'demo-fc2'), /can only be made between/);
+  await expectOk('Staff can still book for a student outside booking hours', call('createBooking', base(DH, 17, 18, { onBehalfOfNiftId: 'FC/24/022' }), 'demo-staff').then(async (r) => { await call('cancelBooking', { bookingId: r.bookingId, reason: 'test' }, 'demo-fccc'); return r; }));
+  store.update('settings/bookingRules', { ...RELAX, specialBookingOpenHour: 0, specialBookingCloseHour: 0 });
+  await expectFail('Special request outside special hours', call('createBooking', base(WE, 21, 23), 'demo-fc2'), /Special bookings .* can only be requested between/);
+  store.update('settings/bookingRules', { ...RELAX, specialMinNoticeHours: 400 });
+  await expectFail('Special request too late (needs hours ahead)', call('createBooking', base(WE, 21, 23), 'demo-fc2'), /at least 400 hours before/);
+  store.update('settings/bookingRules', RELAX);
+  const d1 = await expectOk('FC student books 2 h', call('createBooking', base(DH, 17, 19), 'demo-fc2'));
+  const d2 = await expectOk('…and another 2 h the same day (4 h total)', call('createBooking', base(DH, 19, 21), 'demo-fc2'));
+  await expectFail('…a 5th hour the same day', call('createBooking', base(DH, 21, 22), 'demo-fc2'), /at most 4 hours a day/);
+  if (d2) await call('cancelBooking', { bookingId: d2.bookingId, reason: 'test' }, 'demo-fccc'); // free the day again (2 h left)
+  const weekOf = () => {
+    const from = cal.startOfWeek(DH);
+    const to = cal.addDays(from, 6);
+    return Object.values(store.getRaw('bookings') || {}).filter((b) => b.studentUid === 'demo-fc2' && C.SLOT_HOLDING_STATUSES.includes(b.status) && b.date >= from && b.date <= to);
+  };
+  const wk = weekOf();
+  store.update('settings/bookingRules', { weeklyMaxBookings: wk.length });
+  await expectFail(`Weekly booking limit (limit ${wk.length}, already ${wk.length})`, call('createBooking', base(DH, 21, 22), 'demo-fc2'), /bookings a week/);
+  const wkHours = wk.reduce((h, b) => h + b.duration, 0);
+  store.update('settings/bookingRules', { weeklyMaxBookings: 0, weeklyMaxHours: wkHours });
+  await expectFail(`Weekly hours limit (limit ${wkHours} h, already ${wkHours} h)`, call('createBooking', base(DH, 21, 22), 'demo-fc2'), /hours a week/);
+  store.update('settings/bookingRules', RELAX);
+  await expectOk('Within all limits again → allowed', call('createBooking', base(DH, 21, 22), 'demo-fc2').then(async (r) => { await call('cancelBooking', { bookingId: r.bookingId, reason: 'test' }, 'demo-fccc'); return r; }));
+  for (const r of [d1]) if (r) await call('cancelBooking', { bookingId: r.bookingId, reason: 'test cleanup' }, 'demo-fccc');
+
+  // ---- 12. Data integrity ----
+  console.log('\n12. Data integrity');
   const all = store.getRaw('bookings') || {};
   const slots = store.getRaw('bookingSlots') || {};
   let orphan = 0;
@@ -290,7 +332,7 @@ try {
   }
   const doubles = Object.values(perHour).filter((n) => n > 1).length;
   check(`no hour is double-booked (doubles: ${doubles})`, doubles === 0);
-  check('no signature images stored', !Object.keys(JSON.parse(localStorage.getItem('fc-demo-files-v12') || '{}')).length);
+  check('no signature images stored', !Object.keys(JSON.parse(localStorage.getItem('fc-demo-files-v13') || '{}')).length);
 } catch (e) {
   bad('test run crashed', e.stack || e.message);
 } finally {

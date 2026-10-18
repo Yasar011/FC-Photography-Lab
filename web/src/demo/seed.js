@@ -71,6 +71,9 @@ async function seed() {
 
   // ---- Admins & settings (MAIN_ADMIN_EMAILS bootstrap → Main Admin, defaults seeded) ----
   await call('syncAccount', {}, 'demo-main');
+  // The sample data is created at any time of day: relax booking hours and
+  // weekly limits while seeding (restored to the defaults at the end).
+  store.update('settings/bookingRules', { regularBookingOpenHour: 0, regularBookingCloseHour: 24, specialBookingOpenHour: 0, specialBookingCloseHour: 24, specialMinNoticeHours: 0, weeklyMaxBookings: 0, weeklyMaxHours: 0, cancelBlockWithinHours: 720 });
   await call('setAdminRole', { email: 'prakash.choudhary@nift.ac.in', role: 'staff' }, 'demo-main');
   await call('setAdminRole', { email: 'meera.iyer@nift.ac.in', role: 'fccc' }, 'demo-main');
   for (const uid of ['demo-staff', 'demo-fccc']) await call('syncAccount', {}, uid);
@@ -120,9 +123,10 @@ async function seed() {
   const n3 = await create('demo-fc3', 'Meghna Das', W4, 21, 22, 'Macro jewellery shoot', ['photoLab', 'lights'], { project: 'Accessory photography' });
   await fcccApprove(n3);
   const n4 = await create('demo-fc3', 'Meghna Das', W2, 19, 20, 'Test shoot', ['photoLab'], { project: 'Practice' });
+  await fcccApprove(n4); // cancelling an APPROVED booking close to its start → block
   await call('cancelBooking', { bookingId: n4.bookingId, reason: 'Model unavailable' }, 'demo-fc3');
   note('Cancellations', 'Student cancelled → blocked for 4 days',
-    'Meghna cancelled her own booking, so she cannot book for 4 days. Sign in as Meghna to see the red message. Her other approved booking is not affected. Staff can lift the block (Students → View → "Allow booking now").', n4.bookingId, 'demo-fc3');
+    'Meghna cancelled her own APPROVED booking close to its start, so she cannot book for 4 days. (Cancelling a pending booking, or more than 24 h ahead, does not block.) Sign in as Meghna to see the red message. Her other approved booking is not affected. Staff can lift the block (Students → View → "Allow booking now").', n4.bookingId, 'demo-fc3');
 
   const n5 = await create('demo-staff', 'Ishaan Kapoor', W2, 19, 20, 'Booked at the FC office — slot freed by a cancellation', ['photoLab', 'lights'], { onBehalfOfNiftId: 'FC/23/030', project: 'IDM' });
   note('Staff bookings', 'FC Lab Assistant booked for a student → waits for FC-CC',
@@ -281,5 +285,10 @@ async function seed() {
   note('Accounts', 'Graduated student cannot book', 'Tanya Rathore has graduated; she can sign in and see her history but cannot book.', null, 'demo-grad');
   note('Accounts', 'New student → registration', 'Sign in as "New Student" to see the first-login registration form.', null, 'demo-new');
 
+  // Back to the real rules.
+  store.update('settings/bookingRules', {
+    regularBookingOpenHour: 9, regularBookingCloseHour: 16, specialBookingOpenHour: 9, specialBookingCloseHour: 14,
+    specialMinNoticeHours: 24, weeklyMaxBookings: 3, weeklyMaxHours: 10, cancelBlockWithinHours: 24,
+  });
   guide.forEach((g, i) => store.set(`demoGuide/g${String(i + 1).padStart(2, '0')}`, { ...g, order: i + 1 }));
 }

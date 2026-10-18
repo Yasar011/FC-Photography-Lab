@@ -34,7 +34,8 @@ export default function BookingDetail() {
   const open = {
     cancel: () => ask({
       title: 'Cancel booking',
-      message: isOwner && Number(rules.cancelCooldownDays) > 0
+      message: isOwner && Number(rules.cancelCooldownDays) > 0 && b.status === STATUS.APPROVED
+        && b.startAt - Date.now() <= Number(rules.cancelBlockWithinHours ?? 24) * 3600000
         ? <span>Cancel {b.id}? The slot is released for other students. <b>If you cancel, you can't make a new booking for {rules.cancelCooldownDays} days (until {formatDateTime(Date.now() + rules.cancelCooldownDays * 86400000)}).</b></span>
         : `Cancel ${b.id}? The slot is released for other students.`,
       confirmLabel: 'Cancel booking', tone: 'danger',

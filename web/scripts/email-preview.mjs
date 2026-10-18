@@ -68,6 +68,7 @@ const sections = [
   ['5. Other cases', [
     ['Student — rejected by FC-CC', N.rejectedEmail({ ...fcBooking, status: 'REJECTED' }, 'Lab reserved for jury preparation. Please choose another day.')],
     ['Student — cancelled own booking (4-day block)', N.cancelledEmail({ ...fcBooking, status: 'CANCELLED_BY_STUDENT' }, fcBooking.email, 'you', 'Model unavailable', Date.now() + 4 * 86400000)],
+    ['admin.jodhpur@nift.ac.in — approved booking CANCELLED', N.adminCancelledNoticeEmail({ ...approved(specialBooking), status: 'CANCELLED_BY_STUDENT' }, ['admin.jodhpur@nift.ac.in'], 'the student', 'Model unavailable')],
     ['Student — cancelled by FC-CC', N.cancelledEmail({ ...fcBooking, status: 'CANCELLED_BY_ADMIN' }, fcBooking.email, 'the FC-CC (Prof. Meera Iyer)', 'Lab needed for an official department shoot.')],
     ['Senior student (first-year booked with them)', N.seniorEmail({ ...fcBooking, studentName: 'Kabir Singh', niftId: 'FC/26/007', senior: { name: 'Aarav Mehta', niftId: 'FC/23/014', email: 'aarav.mehta@nift.ac.in' } })],
     ['Student — booked by FC staff', N.staffCreatedEmail({ ...fcBooking, bookedByStaff: true, createdBy: { name: 'Prakash Choudhary' } })],

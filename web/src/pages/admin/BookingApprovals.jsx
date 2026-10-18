@@ -10,7 +10,7 @@ import { FcccActions, FcStepActions } from '../../components/BookingBits.jsx';
 import { ApprovalTabs, ApprovalList } from '../../components/ApprovalList.jsx';
 import { useStatusList } from './AdminDashboard.jsx';
 import { STATUS } from '@shared/constants.js';
-import { formatDate, formatRange, formatDateTime } from '@shared/calendar.js';
+import { formatDate, formatRange, formatDateTime, specialReasons } from '@shared/calendar.js';
 
 /**
  * Approvals — NORMAL bookings only (special bookings live on Special approvals):
@@ -18,7 +18,12 @@ import { formatDate, formatRange, formatDateTime } from '@shared/calendar.js';
  *  • Approved:   upcoming approved bookings
  */
 export default function BookingApprovals() {
-  const { role, isFccc } = useAuth();
+  const { role, isFccc, rules, settings } = useAuth();
+  // A "normal" booking that falls on a weekend / holiday / after hours should have been special.
+  const shouldBeSpecial = (b) => (b.isSpecial ? [] : specialReasons({
+    date: b.date, startHour: b.startHour, endHour: b.endHour, rules,
+    holiday: settings.holidays?.[b.date] || null, overrides: settings.availabilityOverrides?.[b.date] || {},
+  }));
   const now = useNow(60000);
   const pending = useStatusList(STATUS.PENDING_FCCC_APPROVAL);
   const fcWaiting = useStatusList(STATUS.PENDING_FC_APPROVAL);
@@ -73,7 +78,11 @@ export default function BookingApprovals() {
       <ApprovalList
         items={list}
         actionsFor={actionsFor}
-        tagsFor={(b) => (b.isSpecial ? <span className="appr-tag special">Special</span> : null)}
+        tagsFor={(b) => (b.isSpecial
+          ? <span className="appr-tag special">Special</span>
+          : shouldBeSpecial(b).length
+            ? <span className="appr-tag danger">⚠ {shouldBeSpecial(b).join(', ')} — should be special</span>
+            : null)}
         noteFor={(b) => (tab === 'fc' && b.fcStudent ? `FC student: ${b.fcStudent.name} (${b.fcStudent.niftId}) · asked ${formatDateTime(b.createdAt)}` : null)}
       />
       {dialogNode}

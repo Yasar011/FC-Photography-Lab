@@ -130,6 +130,32 @@ export function adminApprovedNoticeEmail(b, to) {
   };
 }
 
+/** To the institute admin when a booking they were told about (approved) is cancelled. */
+export function adminCancelledNoticeEmail(b, to, byLabel, reason) {
+  return {
+    type: 'admin_cancel_notice',
+    to: to || [],
+    subject: `CANCELLED – FC Photography Lab booking ${b.id}${b.isSpecial ? ' (special permission)' : ''}`,
+    bookingId: b.id,
+    trigger: 'booking.cancelled.adminNotice',
+    content: {
+      heading: `Booking ${b.id} is cancelled`,
+      intro: [
+        `This booking was approved earlier and has now been cancelled by ${byLabel}. It no longer takes place.`,
+        ...(b.isSpecial ? ['Please inform the Admin Guard — the people listed below no longer have permission for this time.'] : []),
+      ],
+      rows: bookingRows(b),
+      extraRows: [
+        ['Reason', reason || 'Not provided'],
+        ['Student email', b.email],
+        ['Student phone', b.phone],
+        ...peopleRows(b),
+      ],
+      action: bookingLink(b),
+    },
+  };
+}
+
 export function fcRequestEmail(b, approvalId, fcEmail) {
   return {
     type: 'fc_approval_request',

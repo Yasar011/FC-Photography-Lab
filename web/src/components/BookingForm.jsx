@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
 import { call } from '../firebase.js';
 import { DEPARTMENTS, STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
-import { formatDate, formatHour, formatRange, BOOKABLE_STATES, SLOT_LABELS, SLOT } from '@shared/calendar.js';
+import { formatDate, formatHour, formatRange, BOOKABLE_STATES, SLOT_LABELS, SLOT, submissionProblem, slotStartMs } from '@shared/calendar.js';
 import { sortedEntries, maxHoursFor, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
 
 import { DigitalStamp } from './SignApprove.jsx';
@@ -39,6 +39,8 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   const range = daySlots.filter((s) => s.hour >= start && s.hour < end);
   const requiresSpecial = range.some((s) => s.requiresSpecial);
   const usesOverride = range.some((s) => s.override);
+  // Regular bookings 9 AM–4 PM; special requests 9 AM–2 PM and 24 h ahead (staff exempt).
+  const timeProblem = staffMode ? '' : submissionProblem({ rules, nowMs: Date.now(), isSpecial: requiresSpecial, startAt: slotStartMs(date, start) });
 
   // Other-department students aren't offered items like the FC camera.
   const equipment = sortedEntries(Object.keys(equipmentConfig || {}).length ? equipmentConfig : DEFAULT_EQUIPMENT)
@@ -95,6 +97,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
 
   function validate() {
     if (slotError) return slotError;
+    if (timeProblem) return timeProblem;
     if (form.purpose.trim().length < 3) return 'Please describe the purpose of the booking.';
     if (!form.equipment.length) return 'Please select at least one requirement.';
     for (const id of form.equipment) {
@@ -183,7 +186,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
       footer={
         <>
           <span className="small muted">{end - start} h · {formatRange(start, end)}</span>
-          <button className="btn btn-primary btn-lg" onClick={submit} disabled={submitting || slotError === SLOT_TAKEN}>
+          <button className="btn btn-primary btn-lg" onClick={submit} disabled={submitting || slotError === SLOT_TAKEN || Boolean(timeProblem)}>
             {submitting ? 'Submitting…' : submitLabel}
           </button>
         </>
@@ -228,6 +231,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
           <span className="small muted" style={{ alignSelf: 'center' }}>max {maxH} h</span>
         </div>
         {slotError && slotError !== error && <Alert kind="error">{slotError}</Alert>}
+        {!slotError && timeProblem && timeProblem !== error && <Alert kind="error">{timeProblem}</Alert>}
         {requiresSpecial && !slotError && (
           <Alert kind="warn">
             <span><b>{rules.specialHoursMessage}</b> After you submit: FC Lab Assistant prints the form → {specialStepsFor(student.studentType).filter((x) => x.paper).map((x) => x.label).join(' → ')} → FC-CC approves & signs → give the form to the Admin Guard.</span>

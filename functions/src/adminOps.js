@@ -363,6 +363,14 @@ const SETTINGS_VALIDATORS = {
       studentCanCancel: v.studentCanCancel === true,
       cancelCooldownDays: intIn(v.cancelCooldownDays ?? 4, 0, 30, 'Days blocked after cancelling'),
       maxParticipants: intIn(v.maxParticipants ?? 30, 1, 100, 'Maximum people on a special booking'),
+      cancelBlockWithinHours: intIn(v.cancelBlockWithinHours ?? 24, 0, 720, 'Block only if cancelled within (hours)'),
+      regularBookingOpenHour: intIn(v.regularBookingOpenHour ?? 9, 0, 23, 'Regular bookings open at'),
+      regularBookingCloseHour: intIn(v.regularBookingCloseHour ?? 16, 1, 24, 'Regular bookings close at'),
+      specialBookingOpenHour: intIn(v.specialBookingOpenHour ?? 9, 0, 23, 'Special requests open at'),
+      specialBookingCloseHour: intIn(v.specialBookingCloseHour ?? 14, 1, 24, 'Special requests close at'),
+      specialMinNoticeHours: intIn(v.specialMinNoticeHours ?? 24, 0, 168, 'Special booking notice (hours)'),
+      weeklyMaxBookings: intIn(v.weeklyMaxBookings ?? 3, 0, 50, 'Bookings per week'),
+      weeklyMaxHours: intIn(v.weeklyMaxHours ?? 10, 0, 100, 'Hours per week'),
       approvalNotifyEmails: (() => {
         const list = (Array.isArray(v.approvalNotifyEmails) ? v.approvalNotifyEmails : String(v.approvalNotifyEmails || '').split(','))
           .map((e) => String(e).trim().toLowerCase()).filter(Boolean);

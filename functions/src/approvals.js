@@ -242,6 +242,10 @@ export const resolveFacultyConcern = onCall(CALL_OPTS, async (request) => {
   await sendAll([
     decision === 'reject' ? N.rejectedEmail(after, remarks) : N.concernResolvedEmail(after, label, remarks),
   ]);
+  if (after.status === STATUS.REJECTED && after.facultyConcern?.previousStatus === STATUS.APPROVED) {
+    const notify = (await loadSettings()).bookingRules.approvalNotifyEmails;
+    await sendAll([N.adminCancelledNoticeEmail(after, notify, `the FC-CC (${actor.name}) after a faculty concern`, remarks)]);
+  }
   return { status: after.status };
 });
 

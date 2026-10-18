@@ -32,6 +32,8 @@ const SAME_DECISIONS = and(
   "newData.child('special/steps/final/state').val() === data.child('special/steps/final/state').val()",
 );
 const ME = "root.child('users/' + auth.uid)";
+const R = (key) => `root.child('settings/bookingRules/${key}')`;
+const IST_HOUR = '(((now + 19800000) % 86400000) / 3600000)';
 const BOOKING_CREATE = and(
   '!data.exists()',
   "newData.child('id').val() === $bookingId",
@@ -49,6 +51,9 @@ const BOOKING_CREATE = and(
   `(newData.child('studentType').val() !== 'OTHER_DEPT_STUDENT' || (${NEW_STATUS} === 'PENDING_FC_APPROVAL' && newData.child('fcStudentUid').exists() && newData.child('fcStudentUid').val() !== auth.uid))`,
   // after 10 PM is always special
   `(newData.child('endHour').val() <= 22 || (newData.child('isSpecial').val() === true && ${NEW_STATUS} !== 'PENDING_FCCC_APPROVAL'))`,
+  // when students may book (IST): regular 9 AM–4 PM; special 9 AM–2 PM and ≥ 24 h ahead
+  `(newData.child('isSpecial').val() === true || !${R('regularBookingOpenHour')}.exists() || !${R('regularBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('regularBookingOpenHour')}.val() && ${IST_HOUR} < ${R('regularBookingCloseHour')}.val()))`,
+  `(newData.child('isSpecial').val() !== true || ((!${R('specialBookingOpenHour')}.exists() || !${R('specialBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('specialBookingOpenHour')}.val() && ${IST_HOUR} < ${R('specialBookingCloseHour')}.val())) && (!${R('specialMinNoticeHours')}.exists() || newData.child('startAt').val() - now >= ${R('specialMinNoticeHours')}.val() * 3600000)))`,
   // sane times: in the future, within the booking window, 1–6 hours
   "newData.child('startAt').val() > now",
   "newData.child('startAt').val() < now + 8 * 86400000",

@@ -423,3 +423,102 @@ function sendCopies() {
 function backToTestMode() {
   PropertiesService.getScriptProperties().setProperty('TEST_MODE', 'true');
 }
+
+// ---------------------------------------------------------------------------
+// Daily summary to the FC-CC (about 4:15 PM every day)
+// ---------------------------------------------------------------------------
+// Setup (once): Project Settings → Script properties → add SA_JSON = the whole
+// Firebase service-account key file (JSON). Then run setupDailySummary.
+
+/** Creates the daily 4:15 PM trigger (replaces an old one). */
+function setupDailySummary() {
+  if (!PropertiesService.getScriptProperties().getProperty('SA_JSON')) throw new Error('Add the SA_JSON script property first (see the comment above).');
+  ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === 'dailySummary'; }).forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('dailySummary').timeBased().atHour(16).nearMinute(15).everyDays(1).inTimezone('Asia/Kolkata').create();
+  Logger.log('✓ Daily summary scheduled for about 4:15 PM (IST). Run dailySummary now to see one.');
+}
+
+/** Google access token for the service account (read the database without a signed-in user). */
+function serviceToken() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('sa_token');
+  if (cached) return cached;
+  const sa = JSON.parse(PropertiesService.getScriptProperties().getProperty('SA_JSON') || '{}');
+  if (!sa.client_email || !sa.private_key) throw new Error('SA_JSON script property is missing or invalid.');
+  const now = Math.floor(Date.now() / 1000);
+  const enc = function (o) { return Utilities.base64EncodeWebSafe(JSON.stringify(o)).replace(/=+$/, ''); };
+  const unsigned = enc({ alg: 'RS256', typ: 'JWT' }) + '.' + enc({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email',
+    aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600,
+  });
+  const sig = Utilities.base64EncodeWebSafe(Utilities.computeRsaSha256Signature(unsigned, sa.private_key)).replace(/=+$/, '');
+  const res = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+    method: 'post', payload: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: unsigned + '.' + sig }, muteHttpExceptions: true,
+  });
+  const token = JSON.parse(res.getContentText()).access_token;
+  if (!token) throw new Error('Could not get a service-account token: ' + res.getContentText().slice(0, 200));
+  cache.put('sa_token', token, 3000);
+  return token;
+}
+
+function adminDb(path, query) {
+  const res = UrlFetchApp.fetch(DB_URL + '/' + path + '.json?access_token=' + encodeURIComponent(serviceToken()) + (query ? '&' + query : ''), { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('Database read failed (' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 200));
+  return JSON.parse(res.getContentText() || 'null');
+}
+
+function bookingsWithStatus(status) {
+  const all = adminDb('bookings', 'orderBy=' + encodeURIComponent('"status"') + '&equalTo=' + encodeURIComponent('"' + status + '"')) || {};
+  return Object.keys(all).map(function (k) { return all[k]; })
+    .filter(function (b) { return b && b.endAt > Date.now(); })
+    .sort(function (a, b) { return a.startAt - b.startAt; });
+}
+
+/** Runs from the daily trigger: one email with everything waiting for the FC-CC. */
+function dailySummary() {
+  const props = PropertiesService.getScriptProperties();
+  const today = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd');
+  const fccc = bookingsWithStatus('PENDING_FCCC_APPROVAL');
+  const special = bookingsWithStatus('PENDING_SPECIAL_APPROVAL');
+  const finalReady = special.filter(function (b) { return b.special && b.special.steps && b.special.steps.fcAssistant && b.special.steps.fcAssistant.state === 'approved'; });
+  const toPrint = special.filter(function (b) { return finalReady.indexOf(b) < 0; });
+  const concerns = bookingsWithStatus('FACULTY_CONCERN');
+  const fcStudent = bookingsWithStatus('PENDING_FC_APPROVAL');
+  const waiting = fccc.length + finalReady.length + concerns.length;
+
+  const admins = adminDb('admins') || {};
+  const to = Object.keys(admins).map(function (k) { return admins[k]; })
+    .filter(function (a) { return a && (a.role === 'fccc' || a.role === 'main') && a.email; })
+    .map(function (a) { return a.email; });
+  if (!to.length) { Logger.log('No FC-CC / Main Admin found.'); return; }
+
+  const esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
+  const row = function (b) {
+    const when = Utilities.formatDate(new Date(b.date + 'T12:00:00+05:30'), 'Asia/Kolkata', 'EEE d MMM') + ', ' + hourLabel(b.startHour) + ' – ' + hourLabel(b.endHour);
+    const todayTag = b.date === today ? ' <b style="color:#b3261e">TODAY</b>' : '';
+    return '<tr><td style="padding:6px 10px 6px 0;white-space:nowrap">' + esc(when) + todayTag + '</td>' +
+      '<td style="padding:6px 10px 6px 0"><b>' + esc(b.studentName) + '</b> · ' + esc(b.niftId) + ' · ' + esc(TYPE_LABELS[b.studentType] || b.studentType) + '<br><span style="color:#555">' + esc(b.purpose) + '</span></td>' +
+      '<td style="padding:6px 0;white-space:nowrap"><a href="' + APP_URL + '/bookings/' + b.id + '">' + esc(b.id) + '</a></td></tr>';
+  };
+  const section = function (title, list, note) {
+    if (!list.length) return '';
+    return '<h3 style="font-size:15px;margin:22px 0 6px">' + esc(title) + ' (' + list.length + ')</h3>' +
+      (note ? '<p style="margin:0 0 6px;color:#555;font-size:13px">' + esc(note) + '</p>' : '') +
+      '<table cellpadding="0" cellspacing="0" style="width:100%;font-size:13px;border-top:1px solid #eee">' + list.map(row).join('') + '</table>';
+  };
+  const dateLabel = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'EEEE d MMMM yyyy');
+  const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:640px">' +
+    '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#555">NIFT Jodhpur · FC Photography Lab</div>' +
+    '<h2 style="margin:4px 0 4px">' + (waiting ? waiting + ' booking' + (waiting > 1 ? 's' : '') + ' waiting for you' : 'Nothing waiting for you ✓') + '</h2>' +
+    '<div style="color:#555">' + esc(dateLabel) + ' · daily summary</div>' +
+    section('Waiting for your approval', fccc, 'Normal bookings — nothing is confirmed until you Sign & approve.') +
+    section('Special — final approval', finalReady, 'Form issued; approve when the signed paper form comes back.') +
+    section('Faculty concerns', concerns, 'The faculty said "I did not approve this" — your decision is needed.') +
+    section('For information: waiting for the FC student', fcStudent) +
+    section('For information: special forms not yet printed', toPrint) +
+    '<p style="margin:24px 0 0"><a href="' + APP_URL + '/admin/approvals" style="background:#1d1d1f;color:#fff;padding:10px 16px;border-radius:4px;text-decoration:none;font-weight:600">Open Approvals</a></p></div>';
+  const text = (waiting ? waiting + ' booking(s) waiting for you' : 'Nothing waiting for you') + ' — ' + dateLabel + '\n' + APP_URL + '/admin/approvals';
+  const mail = { type: 'daily_summary', to: to, subject: 'FC Photography Lab – ' + (waiting ? waiting + ' waiting for you' : 'nothing waiting') + ' · ' + dateLabel, html: html, text: text };
+  logEmail(mail, null, sendMail(mail, props, null));
+}

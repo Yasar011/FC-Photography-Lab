@@ -42,6 +42,7 @@ import {
   isAllowedEmail,
   niftKey,
   digitalSignature,
+  SLOT_HOLDING_STATUSES,
 } from '../shared/constants.js';
 import {
   evaluateRange,
@@ -53,6 +54,10 @@ import {
   bookingIdFor,
   formatRange,
   formatDateTime,
+  submissionProblem,
+  startOfWeek,
+  addDays,
+  formatDate,
 } from '../shared/calendar.js';
 import { sortedEntries, maxHoursFor, activeBookingBlock } from '../shared/defaults.js';
 
@@ -148,6 +153,13 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     fail('failed-precondition', range.errors.join(' '));
   }
   const isSpecial = range.requiresSpecial;
+
+  // When students may book, and fair-use limits (staff bookings are exempt).
+  if (!staffBooking) {
+    const late = submissionProblem({ rules, nowMs: Date.now(), isSpecial, startAt: slotStartMs(date, startHour) });
+    if (late) fail('failed-precondition', late);
+    await checkUsageLimits({ studentUid, date, hours: endHour - startHour, rules, studentType: student.studentType });
+  }
 
   // First-year rule.
   let senior = null;
@@ -463,7 +475,7 @@ export const cancelBooking = onCall(CALL_OPTS, async (request) => {
   const isAdmin = APPROVER_ROLES.includes(actor.role);
   const by = actorRef(actor);
 
-  const { after } = await mutateBooking(bookingId, (b) => {
+  const { before, after } = await mutateBooking(bookingId, (b) => {
     const isOwner = b.studentUid === actor.uid;
     if (!isOwner && !isAdmin) fail('permission-denied', 'You can only cancel your own bookings.');
     if (!ACTIVE_STATUSES.includes(b.status)) fail('failed-precondition', 'This booking can no longer be cancelled.');
@@ -485,10 +497,13 @@ export const cancelBooking = onCall(CALL_OPTS, async (request) => {
   }
   const [ap, av] = auditEntry(by, 'BOOKING_CANCELLED', { bookingId: after.id, niftId: after.niftId, details: { status: after.status, reason } });
   updates[ap] = av;
-  // Cancelling your own booking blocks new bookings for a few days.
+  // Cancelling your own APPROVED booking close to its start blocks new bookings
+  // for a few days. Cancelling a pending booking, or cancelling early, does not.
   const cooldownDays = Number(settings.bookingRules.cancelCooldownDays) || 0;
+  const withinMs = (Number(settings.bookingRules.cancelBlockWithinHours ?? 24) || 0) * 3600000;
+  const lateCancel = before?.status === STATUS.APPROVED && after.startAt - Date.now() <= withinMs;
   let blockedUntil = null;
-  if (after.status === STATUS.CANCELLED_BY_STUDENT && cooldownDays > 0) {
+  if (after.status === STATUS.CANCELLED_BY_STUDENT && cooldownDays > 0 && lateCancel) {
     blockedUntil = Date.now() + cooldownDays * 86400000;
     updates[`users/${after.studentUid}/bookingBlock`] = { until: blockedUntil, bookingId: after.id, at: Date.now(), days: cooldownDays };
     const [bp, bv] = auditEntry(by, 'BOOKING_BLOCK_STARTED', { bookingId: after.id, niftId: after.niftId, details: { until: blockedUntil, days: cooldownDays } });
@@ -499,9 +514,38 @@ export const cancelBooking = onCall(CALL_OPTS, async (request) => {
   const byLabel = after.status === STATUS.CANCELLED_BY_STUDENT ? 'the student' : `FC Staff (${actor.name})`;
   const to = [after.email];
   if (after.fcStudent?.email && updates[`fcApprovals/${after.fcApprovalId}/state`]) to.push(after.fcStudent.email);
-  await sendAll([N.cancelledEmail(after, to, byLabel, reason, blockedUntil)]);
+  const emails = [N.cancelledEmail(after, to, byLabel, reason, blockedUntil)];
+  // The institute admin was told it was approved — tell them it is off.
+  if (before?.status === STATUS.APPROVED) emails.push(N.adminCancelledNoticeEmail(after, settings.bookingRules.approvalNotifyEmails, byLabel, reason));
+  await sendAll(emails);
   return { status: after.status, blockedUntil };
 });
+
+/**
+ * Fair use: total hours per day (FC 4 h, others 3 h — so two bookings can't
+ * add up to more) and a weekly cap on bookings / hours (Monday–Sunday).
+ */
+async function checkUsageLimits({ studentUid, date, hours, rules, studentType }) {
+  const snap = await db.ref('bookings').orderByChild('studentUid').equalTo(studentUid).get();
+  const mine = Object.values(snap.val() || {}).filter((b) => SLOT_HOLDING_STATUSES.includes(b.status));
+  const maxDay = maxHoursFor(rules, studentType);
+  const dayHours = mine.filter((b) => b.date === date).reduce((h, b) => h + (Number(b.duration) || 0), 0);
+  if (dayHours + hours > maxDay) {
+    fail('failed-precondition', `You can book at most ${maxDay} hours a day. You already have ${dayHours} h on ${formatDate(date, { weekday: true })}.`);
+  }
+  const from = startOfWeek(date);
+  const to = addDays(from, 6);
+  const week = mine.filter((b) => b.date >= from && b.date <= to);
+  const maxBookings = Number(rules.weeklyMaxBookings) || 0;
+  const maxHours = Number(rules.weeklyMaxHours) || 0;
+  if (maxBookings && week.length + 1 > maxBookings) {
+    fail('failed-precondition', `You can make at most ${maxBookings} bookings a week (Mon–Sun). You already have ${week.length} in the week of ${formatDate(from)}.`);
+  }
+  const weekHours = week.reduce((h, b) => h + (Number(b.duration) || 0), 0);
+  if (maxHours && weekHours + hours > maxHours) {
+    fail('failed-precondition', `You can book at most ${maxHours} hours a week (Mon–Sun). You already have ${weekHours} h in the week of ${formatDate(from)}.`);
+  }
+}
 
 // ---- Admin decisions (approve / reject a regular booking) ----------------------
 export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {

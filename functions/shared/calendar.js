@@ -315,3 +315,32 @@ export function bookingIdFor(dateStr, seq) {
   const [y, m, d] = dateStr.split('-');
   return `FC-${y.slice(2)}${m}${d}-${String(seq).padStart(4, '0')}`;
 }
+
+// ---- When students may submit a booking ---------------------------------------
+const hourLabel = (h) => formatHour(Math.floor(h));
+
+/**
+ * Students make regular bookings only during office hours, and special bookings
+ * (after 10 PM / weekend / holiday) only in the morning and well ahead, so the
+ * paper form can reach the Director. Returns a message, or '' when allowed.
+ */
+export function submissionProblem({ rules, nowMs = Date.now(), isSpecial, startAt }) {
+  const p = istParts(nowMs);
+  const h = p.hour + p.minute / 60;
+  if (isSpecial) {
+    const open = Number(rules.specialBookingOpenHour ?? 9);
+    const close = Number(rules.specialBookingCloseHour ?? 14);
+    if (h < open || h >= close) {
+      return `Special bookings (after 10 PM, weekend or holiday) can only be requested between ${hourLabel(open)} and ${hourLabel(close)}.`;
+    }
+    const notice = Number(rules.specialMinNoticeHours ?? 24);
+    if (startAt && startAt - nowMs < notice * 3600000) {
+      return `Special bookings must be requested at least ${notice} hours before they start, so the form can be signed by the Director.`;
+    }
+    return '';
+  }
+  const open = Number(rules.regularBookingOpenHour ?? 9);
+  const close = Number(rules.regularBookingCloseHour ?? 16);
+  if (h < open || h >= close) return `Bookings can only be made between ${hourLabel(open)} and ${hourLabel(close)}.`;
+  return '';
+}

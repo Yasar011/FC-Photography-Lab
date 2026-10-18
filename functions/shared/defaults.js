@@ -55,6 +55,19 @@ export const DEFAULT_BOOKING_RULES = {
   studentCanCancel: true,
   // A student who cancels their own booking can't book again for this many days (0 = off).
   cancelCooldownDays: 4,
+  // ...but only when an APPROVED booking is cancelled this close to its start (hours).
+  cancelBlockWithinHours: 24,
+
+  // When students may make bookings (IST, 24h clock). Staff bookings are exempt.
+  regularBookingOpenHour: 9,
+  regularBookingCloseHour: 16,
+  specialBookingOpenHour: 9,
+  specialBookingCloseHour: 14,
+  specialMinNoticeHours: 24,
+
+  // Fair use per student (0 = no limit). Per day = the max duration (FC 4 h, others 3 h).
+  weeklyMaxBookings: 3,
+  weeklyMaxHours: 10,
 
   // Special bookings list every person using the lab (name, department, hostel, room).
   maxParticipants: 30,

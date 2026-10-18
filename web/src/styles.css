@@ -586,3 +586,4 @@ button.allday-chip { cursor: pointer; }
 .usage-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .usage-list li:last-child { border-bottom: 0; }
 .usage-list li.late a b { color: var(--red); }
+.appr-tag.danger { background: #fde7e7; color: #b3261e; }

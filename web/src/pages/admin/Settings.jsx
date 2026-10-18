@@ -162,6 +162,20 @@ function RulesEditor() {
               <input className="input" type="number" min={1} max={100} value={r.maxParticipants ?? 30} onChange={num('maxParticipants')} />
             </Field>
           </div>
+          <div className="section-title" style={{ marginTop: 18 }}>When students can book (24-hour clock, IST)</div>
+          <div className="grid grid-4">
+            <Field label="Regular: from"><input className="input" type="number" min={0} max={23} value={r.regularBookingOpenHour ?? 9} onChange={num('regularBookingOpenHour')} /></Field>
+            <Field label="Regular: until"><input className="input" type="number" min={1} max={24} value={r.regularBookingCloseHour ?? 16} onChange={num('regularBookingCloseHour')} /></Field>
+            <Field label="Special: from"><input className="input" type="number" min={0} max={23} value={r.specialBookingOpenHour ?? 9} onChange={num('specialBookingOpenHour')} /></Field>
+            <Field label="Special: until"><input className="input" type="number" min={1} max={24} value={r.specialBookingCloseHour ?? 14} onChange={num('specialBookingCloseHour')} /></Field>
+          </div>
+          <div className="grid grid-4" style={{ marginTop: 12 }}>
+            <Field label="Special: hours ahead" help="e.g. 24 = book at least a day before"><input className="input" type="number" min={0} max={168} value={r.specialMinNoticeHours ?? 24} onChange={num('specialMinNoticeHours')} /></Field>
+            <Field label="Bookings per week" help="Per student, Mon–Sun (0 = no limit)"><input className="input" type="number" min={0} max={50} value={r.weeklyMaxBookings ?? 3} onChange={num('weeklyMaxBookings')} /></Field>
+            <Field label="Hours per week" help="Per student (0 = no limit)"><input className="input" type="number" min={0} max={100} value={r.weeklyMaxHours ?? 10} onChange={num('weeklyMaxHours')} /></Field>
+            <Field label="Cancel block applies within (hours)" help="Only approved bookings cancelled this close to the start"><input className="input" type="number" min={0} max={720} value={r.cancelBlockWithinHours ?? 24} onChange={num('cancelBlockWithinHours')} /></Field>
+          </div>
+          <p className="tiny muted">Per day, a student can book at most the maximum duration in total (FC 4 h, others 3 h). Staff bookings at the counter are exempt from these limits.</p>
         </div>
       </section>
       <section className="card">

@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { useLive, dbQuery, useNow } from '../lib/hooks.js';
 import { useMyBookings, isUpcoming } from '../lib/bookings.js';
 import { STATUS_META, ACCOUNT_STATUS } from '@shared/constants.js';
-import { bookingWindow, datesBetween, addDays, formatDate, formatRange, formatDateTime, BOOKABLE_STATES, todayIST } from '@shared/calendar.js';
+import { formatHour, bookingWindow, datesBetween, addDays, formatDate, formatRange, formatDateTime, BOOKABLE_STATES, todayIST } from '@shared/calendar.js';
 
 import { useSlotRange, daySlots } from './Calendar.jsx';
 import { maxHoursFor, activeBookingBlock } from '@shared/defaults.js';
@@ -212,7 +212,7 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
         <p className="small muted" style={{ margin: '-6px 0 10px' }}>
           {staffMode
             ? `Booking for ${student.name} · up to ${rules.staffBookingWindowDays} days ahead · max ${maxH} h`
-            : `Click a free slot (or drag to select up to ${maxH} hours). Bookings open ${rules.bookingWindowDays} days ahead.`}
+            : `Click a free slot (or drag to select up to ${maxH} hours). Book between ${formatHour(rules.regularBookingOpenHour ?? 9)} and ${formatHour(rules.regularBookingCloseHour ?? 16)}; special (after 10 PM / weekend / holiday) between ${formatHour(rules.specialBookingOpenHour ?? 9)} and ${formatHour(rules.specialBookingCloseHour ?? 14)}, ${rules.specialMinNoticeHours ?? 24} h ahead.`}
         </p>
         <TimeGrid
           dates={dates}
