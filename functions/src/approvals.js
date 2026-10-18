@@ -97,10 +97,10 @@ export const respondFcApproval = onCall(CALL_OPTS, async (request) => {
   if (decision === 'reject') emails.push(N.fcRejectedEmail(after, reason));
   else {
     emails.push(N.fcApprovedEmail(after));
-    if (after.status === STATUS.PENDING_FCCC_APPROVAL) emails.push(N.fcccApprovalNeededEmail(after, await adminEmails(['fccc'])));
+    if (after.status === STATUS.PENDING_FCCC_APPROVAL) emails.push(N.fcccApprovalNeededEmail(after, await adminEmails(['fccc', 'main'])));
     if (after.status === STATUS.PENDING_SPECIAL_APPROVAL) {
       emails.push(N.specialRequiredEmail(after, after.email));
-      emails.push(N.specialRequiredEmail(after, await adminEmails(['staff', 'fccc']), true));
+      emails.push(N.specialRequiredEmail(after, await adminEmails(['staff', 'fccc', 'main']), true));
     }
   }
   await sendAll(emails);

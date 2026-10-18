@@ -415,10 +415,10 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
   else if (booking.status === STATUS.APPROVED) emails.push(N.approvedEmail(booking, 'booking.create'));
   else emails.push(N.submittedEmail(booking));
   if (fcApprovalId) emails.push(N.fcRequestEmail(booking, fcApprovalId, fcStudent.email));
-  if (booking.status === STATUS.PENDING_FCCC_APPROVAL) emails.push(N.fcccApprovalNeededEmail(booking, await adminEmails(['fccc'])));
+  if (booking.status === STATUS.PENDING_FCCC_APPROVAL) emails.push(N.fcccApprovalNeededEmail(booking, await adminEmails(['fccc', 'main'])));
   if (booking.status === STATUS.PENDING_SPECIAL_APPROVAL) {
     emails.push(N.specialRequiredEmail(booking, booking.email));
-    emails.push(N.specialRequiredEmail(booking, await adminEmails(['staff', 'fccc']), true));
+    emails.push(N.specialRequiredEmail(booking, await adminEmails(['staff', 'fccc', 'main']), true));
   }
   if (booking.faculty) {
     emails.push(N.facultyEmail(booking, appLink(`/faculty/${id}?t=${facultyToken}`)));

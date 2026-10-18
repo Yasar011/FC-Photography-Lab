@@ -71,7 +71,7 @@ function doPost(e) {
     try {
       if (booking) upsertBooking(booking);
       if (body.action === 'mail' && body.mail) {
-        const result = sendMail(body.mail, props);
+        const result = sendMail(body.mail, props, booking);
         logEmail(body.mail, booking, result + (sender === 'server' ? '' : ' · by ' + sender));
       }
     } finally {
@@ -169,25 +169,107 @@ function json(obj) {
 // ---------------------------------------------------------------------------
 // Email
 // ---------------------------------------------------------------------------
-function sendMail(mail, props) {
-  let to = [].concat(mail.to || []).filter(Boolean).join(',');
-  if (!to) return 'skipped — no recipient';
-  let subject = mail.subject || 'FC Photography Lab';
+function sendMail(mail, props, booking) {
+  const recipients = [].concat(mail.to || []).filter(Boolean);
+  if (!recipients.length) return 'skipped — no recipient';
+  if (MailApp.getRemainingDailyQuota() < recipients.length) throw new Error('Daily Gmail sending limit reached');
 
   // TEST MODE (default after setup): every email goes to you instead of the
   // real student / faculty. Turn off with goLive() when you are ready.
-  if (props.getProperty('TEST_MODE') !== 'false') {
-    const testTo = props.getProperty('TEST_EMAIL') || Session.getEffectiveUser().getEmail();
-    subject = '[TEST → ' + to + '] ' + subject;
-    to = testTo;
-  }
-  if (MailApp.getRemainingDailyQuota() < 1) throw new Error('Daily Gmail sending limit reached');
+  const test = props.getProperty('TEST_MODE') !== 'false';
+  const testTo = props.getProperty('TEST_EMAIL') || Session.getEffectiveUser().getEmail();
+  const bookingId = booking && booking.id;
+  const results = recipients.map(function (real) {
+    const to = test ? testTo : real;
+    const subject = (test ? '[TEST → ' + real + '] ' : '') + (bookingId ? threadSubject(booking) : (mail.subject || 'FC Photography Lab'));
+    const html = updateBanner(mail.subject) + (mail.html || '');
+    // One conversation per booking and person: later steps are replies to the first email.
+    if (bookingId && gmailApiOn()) return sendThreaded((test ? 'T|' : '') + bookingId + '|' + real, to, subject, mail.text || '', html, props);
+    MailApp.sendEmail(to, subject, mail.text || '', mailOptions(html, props));
+    return 'sent';
+  });
+  return results.join(', ') + (test ? ' (TEST → ' + testTo + ')' : '');
+}
 
-  const options = { htmlBody: mail.html, name: props.getProperty('SENDER_NAME') || 'FC Photography Lab — NIFT Jodhpur' };
+function mailOptions(html, props) {
+  const o = { htmlBody: html, name: props.getProperty('SENDER_NAME') || 'FC Photography Lab — NIFT Jodhpur' };
   const replyTo = props.getProperty('REPLY_TO');
-  if (replyTo) options.replyTo = replyTo;
-  MailApp.sendEmail(to, subject, mail.text || '', options);
-  return props.getProperty('TEST_MODE') !== 'false' ? 'sent (TEST → ' + to + ')' : 'sent';
+  if (replyTo) o.replyTo = replyTo;
+  return o;
+}
+
+/** Same subject for every email about one booking, so they stay in one conversation. */
+function threadSubject(b) {
+  let when = b.date || '';
+  try {
+    when = Utilities.formatDate(new Date(b.date + 'T12:00:00+05:30'), 'Asia/Kolkata', 'EEE d MMM yyyy');
+  } catch (e) { /* keep raw date */ }
+  return 'FC Photography Lab – Booking ' + b.id + ' · ' + (b.student || '') + ' · ' + when + ', ' + (b.time || '');
+}
+
+/** What this step is about, shown at the top of each email in the conversation. */
+function updateBanner(subject) {
+  if (!subject) return '';
+  const text = String(subject).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  return '<div style="font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#b3261e;padding:10px 4px">' + text + '</div>';
+}
+
+// ---------------------------------------------------------------------------
+// Conversations (needs Services → Gmail API in the Apps Script editor)
+// ---------------------------------------------------------------------------
+const THREADS = 'Threads';
+
+function gmailApiOn() {
+  return typeof Gmail !== 'undefined' && Gmail.Users && Gmail.Users.Messages;
+}
+
+function findThread(key) {
+  const sh = sheet(THREADS, ['Key', 'Thread ID', 'Message-ID', 'Subject', 'Started']);
+  if (sh.getLastRow() < 2) return null;
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i][0] === key) return { threadId: rows[i][1], messageId: rows[i][2], subject: rows[i][3] };
+  }
+  return null;
+}
+
+function sendThreaded(key, to, subject, text, html, props) {
+  const th = findThread(key);
+  const subj = th ? 'Re: ' + th.subject : subject;
+  const raw = buildMime(to, subj, text, html, th ? th.messageId : null, props);
+  const req = { raw: raw };
+  if (th && th.threadId) req.threadId = th.threadId;
+  const sent = Gmail.Users.Messages.send(req, 'me');
+  if (th) return 'sent (reply in conversation)';
+  const meta = Gmail.Users.Messages.get('me', sent.id, { format: 'metadata', metadataHeaders: ['Message-Id'] });
+  const h = ((meta.payload && meta.payload.headers) || []).filter(function (x) { return String(x.name).toLowerCase() === 'message-id'; })[0];
+  const sh = sheet(THREADS, ['Key', 'Thread ID', 'Message-ID', 'Subject', 'Started']);
+  sh.appendRow([key, sent.threadId, h ? h.value : '', subject, new Date()]);
+  sh.hideSheet();
+  return 'sent (new conversation)';
+}
+
+function buildMime(to, subject, text, html, inReplyTo, props) {
+  const enc = function (s) { return Utilities.base64Encode(s, Utilities.Charset.UTF_8); };
+  const wrap = function (s) { return s.replace(/(.{76})/g, '$1\r\n'); };
+  const name = props.getProperty('SENDER_NAME') || 'FC Photography Lab — NIFT Jodhpur';
+  const boundary = 'fcb' + Utilities.getUuid().replace(/-/g, '');
+  const head = [
+    'From: =?UTF-8?B?' + enc(name) + '?= <' + Session.getEffectiveUser().getEmail() + '>',
+    'To: ' + to,
+    'Subject: =?UTF-8?B?' + enc(subject) + '?=',
+    'MIME-Version: 1.0',
+  ];
+  if (inReplyTo) head.push('In-Reply-To: ' + inReplyTo, 'References: ' + inReplyTo);
+  const replyTo = props.getProperty('REPLY_TO');
+  if (replyTo) head.push('Reply-To: ' + replyTo);
+  head.push('Content-Type: multipart/alternative; boundary="' + boundary + '"');
+  const mime = head.join('\r\n') + '\r\n\r\n' + [
+    '--' + boundary, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', wrap(enc(text)),
+    '--' + boundary, 'Content-Type: text/html; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', wrap(enc(html)),
+    '--' + boundary + '--', '',
+  ].join('\r\n');
+  return Utilities.base64EncodeWebSafe(mime, Utilities.Charset.UTF_8);
 }
 
 function logEmail(mail, booking, result) {
@@ -288,12 +370,18 @@ function sendTest() {
     id: 'FC-TEST-0002', status: 'FACULTY_CONCERN', statusLabel: 'Faculty Concern', facultySaidNo: true, facultyConcernOpen: true,
     facultyRemarks: 'I have not been informed about this shoot.',
   }));
-  const mail = {
-    type: 'test', to: [Session.getEffectiveUser().getEmail()], subject: 'FC Photography Lab — test email',
-    text: 'If you can read this, the Google Sheet email system works.',
-    html: '<p>If you can read this, the <b>Google Sheet email system</b> works.</p>',
-  };
-  logEmail(mail, sample, sendMail(mail, props));
+  // 1. Permission to check sign-ins (the website needs this).
+  UrlFetchApp.fetch(DB_URL + '/.json?shallow=true', { muteHttpExceptions: true });
+  Logger.log('✓ Can reach Firebase (permission "connect to an external service" is granted).');
+  Logger.log(gmailApiOn() ? '✓ Gmail API is on — emails about one booking stay in one conversation.' : '✗ Gmail API is OFF — add it under Services (+) → Gmail API to keep each booking in one conversation.');
+
+  // 2. Two emails about the same booking → they should arrive as ONE conversation.
+  const me = Session.getEffectiveUser().getEmail();
+  const first = { type: 'test', to: [me], subject: 'Booking submitted – FC-TEST-0001', text: 'Step 1: booking submitted.', html: '<p><b>Step 1:</b> booking submitted.</p>' };
+  const second = { type: 'test', to: [me], subject: 'Booking approved – FC-TEST-0001', text: 'Step 2: approved by the FC-CC.', html: '<p><b>Step 2:</b> approved by the FC-CC (reply in the same conversation).</p>' };
+  logEmail(first, sample, sendMail(first, props, sample));
+  logEmail(second, sample, sendMail(second, props, sample));
+  Logger.log('✓ Sent 2 test emails to ' + me + ' — check they are in one conversation.');
 }
 
 /** Real emails to students & faculty from now on. */
