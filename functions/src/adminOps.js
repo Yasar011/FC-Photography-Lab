@@ -371,6 +371,16 @@ const SETTINGS_VALIDATORS = {
       specialMinNoticeHours: intIn(v.specialMinNoticeHours ?? 24, 0, 168, 'Special booking notice (hours)'),
       weeklyMaxBookings: intIn(v.weeklyMaxBookings ?? 3, 0, 50, 'Bookings per week'),
       weeklyMaxHours: intIn(v.weeklyMaxHours ?? 10, 0, 100, 'Hours per week'),
+      directorEmail: (() => {
+        const e = String(v.directorEmail || '').trim().toLowerCase();
+        if (e && !isValidEmail(e)) fail('invalid-argument', `Invalid Director email: ${e}`);
+        return e;
+      })(),
+      deptCcEmails: Object.fromEntries(['AD', 'BFT', 'TD', 'FD', 'MFM'].map((d) => {
+        const e = String(v.deptCcEmails?.[d] || '').trim().toLowerCase();
+        if (e && !isValidEmail(e)) fail('invalid-argument', `Invalid ${d} CC email: ${e}`);
+        return [d, e];
+      })),
       approvalNotifyEmails: (() => {
         const list = (Array.isArray(v.approvalNotifyEmails) ? v.approvalNotifyEmails : String(v.approvalNotifyEmails || '').split(','))
           .map((e) => String(e).trim().toLowerCase()).filter(Boolean);

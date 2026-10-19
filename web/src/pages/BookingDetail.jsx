@@ -5,7 +5,7 @@ import { useLive } from '../lib/hooks.js';
 import { call } from '../firebase.js';
 import { StatusBadge, Loading, Alert } from '../components/ui.jsx';
 import { useActionDialog } from '../components/SignApprove.jsx';
-import { BookingFacts, HistoryTimeline, SpecialTracker, SpecialActions, FcccActions, FcStepActions, SignaturesPanel } from '../components/BookingBits.jsx';
+import { BookingFacts, HistoryTimeline, SpecialTracker, SpecialActions, FcccActions, FcStepActions, SignaturesPanel, ApprovalTracker, EmailStepActions, isPaperSpecial } from '../components/BookingBits.jsx';
 import Icon from '../components/Icon.jsx';
 import { STATUS, ACTIVE_STATUSES, STATUS_META } from '@shared/constants.js';
 import { formatDate, formatDateTime, formatRange } from '@shared/calendar.js';
@@ -109,14 +109,27 @@ export default function BookingDetail() {
             {isFccc && active && !fcccPending && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && b.status !== STATUS.FACULTY_CONCERN && <button className="btn btn-danger" onClick={open.reject}>Reject</button>}
             {canStudentCancel && <button className="btn btn-danger" onClick={open.cancel}>Cancel booking</button>}
             {isFccc && active && !isOwner && <button className="btn btn-ghost" onClick={open.cancel}><Icon name="trash" /> Cancel (FC-CC)</button>}
-            {(isAdmin || isOwner) && b.isSpecial && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && <Link className="btn btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Print form</Link>}
+            {(isAdmin || isOwner) && isPaperSpecial(b) && b.status !== STATUS.PENDING_SPECIAL_APPROVAL && <Link className="btn btn-ghost" to={`/print/${b.id}`}><Icon name="print" /> Print form</Link>}
             {b.fcStudentUid === user.uid && b.fcApprovalId && <Link className="btn btn-tonal" to={`/approvals/${b.fcApprovalId}`}>Open FC approval</Link>}
           </div>
         )}
 
         <div className="split">
           <div className="stack-lg">
-            {b.isSpecial && (
+            {!isPaperSpecial(b) && (
+              <section className="card">
+                <div className="card-head">
+                  <h2>Approvals</h2>
+                  {b.isSpecial && <span className="small muted">Special: {(b.specialReasons || []).join(', ')}</span>}
+                </div>
+                <div className="card-body stack-lg">
+                  <ApprovalTracker booking={b} />
+                  {isAdmin && <FcccActions booking={b} role={role} onDialog={ask} />}
+                  {isAdmin && <EmailStepActions booking={b} role={role} />}
+                </div>
+              </section>
+            )}
+            {isPaperSpecial(b) && (
               <section className="card">
                 <div className="card-head">
                   <h2>Special approval</h2>
@@ -128,19 +141,10 @@ export default function BookingDetail() {
                 </div>
               </section>
             )}
-            {!b.isSpecial && fcccPending && (
-              <section className="card">
-                <div className="card-head"><h2>FC-CC approval</h2></div>
-                <div className="card-body stack">
-                  <p className="small">{isOwner ? 'Your booking is waiting for the FC-CC. It is confirmed only after the FC-CC approves — you will get an email.' : 'Nothing is confirmed without the FC-CC. The FC-CC approves with a digital signature.'}</p>
-                  {isAdmin && <FcccActions booking={b} role={role} onDialog={ask} />}
-                </div>
-              </section>
-            )}
-            {!b.isSpecial && [STATUS.APPROVED, STATUS.COMPLETED].includes(b.status) && (
+            {!isPaperSpecial(b) && [STATUS.APPROVED, STATUS.COMPLETED].includes(b.status) && (
               <Alert kind="ok">
                 <span>
-                  <b>No printing needed</b> — this booking is approved{b.fcccApproval ? ` and signed by FC-CC ${b.fcccApproval.byName}` : ''}. Show your Booking ID at the lab.{' '}
+                  <b>No printing needed</b> — this booking is approved and the institute admin is informed. Show your Booking ID and NIFT ID card at the lab.{' '}
                   <Link to={`/print/${b.id}`}>Print booking slip (optional)</Link>
                 </span>
               </Alert>

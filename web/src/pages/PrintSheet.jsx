@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { useLive } from '../lib/hooks.js';
 import { Loading, Alert } from '../components/ui.jsx';
 import { useActionDialog } from '../components/SignApprove.jsx';
-import { SpecialActions, FcccActions, useBookingSignatures, signatureEntries, handlingNotes, hasStoredSignatures } from '../components/BookingBits.jsx';
+import { SpecialActions, FcccActions, isPaperSpecial, useBookingSignatures, signatureEntries, handlingNotes, hasStoredSignatures } from '../components/BookingBits.jsx';
 import { DigitalStamp } from '../components/SignApprove.jsx';
 import Icon from '../components/Icon.jsx';
 import { STATUS_META, STUDENT_TYPE_LABELS, ADMIN_GUARD_NOTE, specialStepsFor } from '@shared/constants.js';
@@ -65,7 +65,8 @@ export default function PrintSheet() {
   if (!b) return <div className="print-wrap"><Alert kind="error">Booking not found or no access.</Alert></div>;
   const entries = signatureEntries(b, sigs);
   const approvedStamp = entries.some((e) => e.approved);
-  const title = b.isSpecial ? 'FC Photography Lab — Special Hours Permission Form' : 'FC Photography Lab — Booking Slip';
+  const paper = isPaperSpecial(b);
+  const title = paper ? 'FC Photography Lab — Special Hours Permission Form' : b.isSpecial ? 'FC Photography Lab — Special Hours Booking (approved digitally)' : 'FC Photography Lab — Booking Slip';
   const route = specialStepsFor(b.studentType);
 
   return (
@@ -77,12 +78,12 @@ export default function PrintSheet() {
           <button className="btn btn-tonal" onClick={downloadPdf} disabled={pdfBusy}><Icon name="external" /> {pdfBusy ? 'Preparing PDF…' : 'Download PDF'}</button>
           <Link className="btn btn-ghost" to={`/bookings/${b.id}`}>Open booking</Link>
         </div>
-        {isAdmin && b.isSpecial && <SpecialActions booking={b} role={role} onDialog={openDialog} compact hidePrint />}
-        {isAdmin && !b.isSpecial && <FcccActions booking={b} role={role} onDialog={openDialog} compact />}
+        {isAdmin && paper && <SpecialActions booking={b} role={role} onDialog={openDialog} compact hidePrint />}
+        {isAdmin && !paper && <FcccActions booking={b} role={role} onDialog={openDialog} compact />}
       </div>
-      {!b.isSpecial && (
+      {!paper && (
         <div className="no-print" style={{ maxWidth: 820, margin: '0 auto 12px' }}>
-          <Alert kind="info">Optional — no printing is needed for normal bookings. Print only if a paper copy is wanted.</Alert>
+          <Alert kind="info">Optional — no printing is needed. Print only if a paper copy is wanted.</Alert>
         </div>
       )}
       {pdfError && <div className="no-print" style={{ maxWidth: 820, margin: '0 auto 12px' }}><Alert kind="error">{pdfError}</Alert></div>}
@@ -167,7 +168,7 @@ export default function PrintSheet() {
         {handlingNotes(b).length > 0 && (
           <p style={{ fontSize: 11.5, color: '#444', marginTop: 8 }}>{handlingNotes(b).join(' · ')}</p>
         )}
-        {b.isSpecial ? (
+        {paper ? (
           <>
             <ol style={{ fontSize: 12, marginTop: 14, paddingLeft: 18 }}>
               {route.map((x) => <li key={x.key}>{x.todo}.</li>)}
@@ -176,7 +177,7 @@ export default function PrintSheet() {
           </>
         ) : (
           <p style={{ fontSize: 12, marginTop: 14 }}>
-            Approved and digitally signed by the FC-CC in the portal. No printing is required — this slip is optional. Carry your NIFT ID to the session.
+            Every approval above is digitally signed — scan a QR code to verify it. No printing is required; this slip is optional. Carry your NIFT ID to the session.
           </p>
         )}
         <div style={{ marginTop: 18, fontSize: 11, color: '#555', display: 'flex', justifyContent: 'space-between' }}>

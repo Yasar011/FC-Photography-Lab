@@ -18,7 +18,7 @@ const and = (...xs) => `(${xs.join(' && ')})`;
 const same = (field) => `newData.child('${field}').val() === data.child('${field}').val()`;
 const isOneOf = (expr, values) => or(...values.map((v) => `${expr} === '${v}'`));
 
-const HOLDING = ['SUBMITTED', 'PENDING_FC_APPROVAL', 'FC_APPROVED', 'PENDING_SPECIAL_APPROVAL', 'PENDING_FCCC_APPROVAL', 'FACULTY_CONCERN', 'APPROVED', 'COMPLETED'];
+const HOLDING = ['SUBMITTED', 'PENDING_FC_APPROVAL', 'FC_APPROVED', 'PENDING_SPECIAL_APPROVAL', 'PENDING_FCCC_APPROVAL', 'PENDING_DEPT_CC', 'PENDING_DIRECTOR', 'FACULTY_CONCERN', 'APPROVED', 'COMPLETED'];
 const ENDED = ['REJECTED', 'CANCELLED_BY_STUDENT', 'CANCELLED_BY_ADMIN'];
 
 // ---- bookings ----
@@ -30,6 +30,8 @@ const SAME_DECISIONS = and(
   "newData.child('fcccApproval/at').val() === data.child('fcccApproval/at').val()",
   "newData.child('special/steps/fcAssistant/state').val() === data.child('special/steps/fcAssistant/state').val()",
   "newData.child('special/steps/final/state').val() === data.child('special/steps/final/state').val()",
+  "newData.child('deptCcApproval/at').val() === data.child('deptCcApproval/at').val()",
+  "newData.child('directorApproval/at').val() === data.child('directorApproval/at').val()",
 );
 const ME = "root.child('users/' + auth.uid)";
 const R = (key) => `root.child('settings/bookingRules/${key}')`;
@@ -44,13 +46,15 @@ const BOOKING_CREATE = and(
   `${ME}.child('bookingAccess').val() === true`,
   // cancelled recently → blocked for a few days
   `(!${ME}.child('bookingBlock/until').exists() || ${ME}.child('bookingBlock/until').val() < now)`,
-  isOneOf(NEW_STATUS, ['PENDING_FC_APPROVAL', 'PENDING_SPECIAL_APPROVAL', 'PENDING_FCCC_APPROVAL']),
+  isOneOf(NEW_STATUS, ['PENDING_FC_APPROVAL', 'PENDING_FCCC_APPROVAL']),
+  "!newData.child('deptCcApproval').exists()",
+  "!newData.child('directorApproval').exists()",
   "!newData.child('fcccApproval').exists()",
   "!newData.child('special/steps').exists()",
   // other departments always need their FC student first
   `(newData.child('studentType').val() !== 'OTHER_DEPT_STUDENT' || (${NEW_STATUS} === 'PENDING_FC_APPROVAL' && newData.child('fcStudentUid').exists() && newData.child('fcStudentUid').val() !== auth.uid))`,
   // after 10 PM is always special
-  `(newData.child('endHour').val() <= 22 || (newData.child('isSpecial').val() === true && ${NEW_STATUS} !== 'PENDING_FCCC_APPROVAL'))`,
+  "(newData.child('endHour').val() <= 22 || newData.child('isSpecial').val() === true)",
   // when students may book (IST): regular 9 AM–4 PM; special 9 AM–2 PM and ≥ 24 h ahead
   `(newData.child('isSpecial').val() === true || !${R('regularBookingOpenHour')}.exists() || !${R('regularBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('regularBookingOpenHour')}.val() && ${IST_HOUR} < ${R('regularBookingCloseHour')}.val()))`,
   `(newData.child('isSpecial').val() !== true || ((!${R('specialBookingOpenHour')}.exists() || !${R('specialBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('specialBookingOpenHour')}.val() && ${IST_HOUR} < ${R('specialBookingCloseHour')}.val())) && (!${R('specialMinNoticeHours')}.exists() || newData.child('startAt').val() - now >= ${R('specialMinNoticeHours')}.val() * 3600000)))`,
@@ -74,7 +78,7 @@ const FC_STUDENT_ANSWER = and(
   or(
     `${NEW_STATUS} === 'REJECTED'`,
     `${NEW_STATUS} === 'FACULTY_CONCERN'`,
-    `(data.child('isSpecial').val() === true ? ${NEW_STATUS} === 'PENDING_SPECIAL_APPROVAL' : ${NEW_STATUS} === 'PENDING_FCCC_APPROVAL')`,
+    `${NEW_STATUS} === 'PENDING_DEPT_CC'`, // other departments: the Dept CC is next
   ),
   SAME_CORE,
   SAME_DECISIONS,

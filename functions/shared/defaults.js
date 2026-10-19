@@ -73,6 +73,9 @@ export const DEFAULT_BOOKING_RULES = {
   maxParticipants: 30,
   // Told whenever the FC-CC approves a booking (special: with the full list of people).
   approvalNotifyEmails: ['admin.jodhpur@nift.ac.in'],
+  // One-click approvers (emails). Empty → the request goes to the Main Admin.
+  directorEmail: '',
+  deptCcEmails: { AD: '', BFT: '', TD: '', FD: '', MFM: '' },
 
 
 };

@@ -60,6 +60,8 @@ export const STATUS = {
   FC_APPROVED: 'FC_APPROVED',
   PENDING_SPECIAL_APPROVAL: 'PENDING_SPECIAL_APPROVAL',
   PENDING_FCCC_APPROVAL: 'PENDING_FCCC_APPROVAL',
+  PENDING_DEPT_CC: 'PENDING_DEPT_CC',
+  PENDING_DIRECTOR: 'PENDING_DIRECTOR',
   FACULTY_CONCERN: 'FACULTY_CONCERN',
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
@@ -74,6 +76,8 @@ export const STATUS_META = {
   FC_APPROVED: { label: 'FC Student Approved', tone: 'yellow' },
   PENDING_SPECIAL_APPROVAL: { label: 'Pending Special Approval', tone: 'orange' },
   PENDING_FCCC_APPROVAL: { label: 'Pending FC-CC Approval', tone: 'orange' },
+  PENDING_DEPT_CC: { label: 'Pending Dept CC Approval', tone: 'orange' },
+  PENDING_DIRECTOR: { label: 'Pending Director Approval', tone: 'orange' },
   FACULTY_CONCERN: { label: 'Faculty Concern', tone: 'orange' },
   APPROVED: { label: 'Approved', tone: 'green' },
   REJECTED: { label: 'Rejected', tone: 'red' },
@@ -89,6 +93,8 @@ export const ACTIVE_STATUSES = [
   STATUS.FC_APPROVED,
   STATUS.PENDING_SPECIAL_APPROVAL,
   STATUS.PENDING_FCCC_APPROVAL,
+  STATUS.PENDING_DEPT_CC,
+  STATUS.PENDING_DIRECTOR,
   STATUS.FACULTY_CONCERN,
   STATUS.APPROVED,
 ];
@@ -98,6 +104,8 @@ export const PENDING_STATUSES = [
   STATUS.FC_APPROVED,
   STATUS.PENDING_SPECIAL_APPROVAL,
   STATUS.PENDING_FCCC_APPROVAL,
+  STATUS.PENDING_DEPT_CC,
+  STATUS.PENDING_DIRECTOR,
   STATUS.FACULTY_CONCERN,
 ];
 // Statuses that keep the slot marked in the calendar (released otherwise).
@@ -247,3 +255,30 @@ export function digitalSignature({ name, id = null, role, at, ref }) {
 export function participantLines(b) {
   return (b?.participants || []).map((p, i) => `${i + 1}. ${p.name} · ${p.department} · ${p.hostel}, Room ${p.room}`);
 }
+
+// ---- Approval chain (all digital, no printing) ----------------------------------
+//   FC / FC-IDM, normal:   FC-CC
+//   Other dept, normal:    FC student → Dept CC → FC-CC
+//   FC / FC-IDM, special:  FC-CC → Director
+//   Other dept, special:   FC student → Dept CC → FC-CC → Director
+// After the last step the booking is APPROVED and the institute admin is emailed.
+// The Dept CC and the Director approve from a one-click email (Google Sheet page).
+export function approvalChain(b) {
+  const other = !isFcType(b.studentType);
+  const steps = [];
+  if (b.requiresFcApproval || b.fcStudent) steps.push({ key: 'fcStudent', label: 'FC student', status: STATUS.PENDING_FC_APPROVAL });
+  if (other) steps.push({ key: 'deptCc', label: `${b.department || 'Dept'} CC`, status: STATUS.PENDING_DEPT_CC, byEmail: true });
+  steps.push({ key: 'fccc', label: 'FC-CC', status: STATUS.PENDING_FCCC_APPROVAL });
+  if (b.isSpecial) steps.push({ key: 'director', label: 'Director', status: STATUS.PENDING_DIRECTOR, byEmail: true });
+  return steps;
+}
+
+/** Status after `stepKey` approves (APPROVED after the last step). */
+export function statusAfter(b, stepKey) {
+  const chain = approvalChain(b);
+  const i = chain.findIndex((s) => s.key === stepKey);
+  return chain[i + 1]?.status || STATUS.APPROVED;
+}
+
+/** The step a pending status belongs to. */
+export const stepForStatus = (b, status) => approvalChain(b).find((s) => s.status === status) || null;

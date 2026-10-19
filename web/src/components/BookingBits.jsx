@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './Icon.jsx';
-import { SPECIAL_STEPS, STATUS, STUDENT_TYPE_LABELS, APPROVER_ROLES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
+import { SPECIAL_STEPS, STATUS, STUDENT_TYPE_LABELS, APPROVER_ROLES, specialStepsFor, ADMIN_GUARD_NOTE, approvalChain } from '@shared/constants.js';
 import { formatDate, formatDateTime, formatRange } from '@shared/calendar.js';
 import { call } from '../firebase.js';
 import { DigitalStamp } from './SignApprove.jsx';
+import { useToast } from './ui.jsx';
 
 export function HistoryTimeline({ history }) {
   const entries = Object.values(history || {}).sort((a, b) => a.at - b.at);
@@ -353,6 +354,86 @@ export function useBookingSignatures(bookingId, version, enabled = true) {
  * student, Dept CC / subject faculty (other departments, special bookings),
  * Director and FC-CC. The FC Lab Assistant and Director's PA only pass the form on.
  */
+/** Older special bookings used the printed form (FC Lab Assistant → paper signatures). */
+export const isPaperSpecial = (b) => b?.status === STATUS.PENDING_SPECIAL_APPROVAL || Boolean(b?.special?.steps?.fcAssistant);
+
+/** Has this step of the approval chain approved? */
+function stepRecord(b, key) {
+  if (key === 'fcStudent') return b.fcApproval?.state === 'APPROVED' ? { by: b.fcApproval.byName, at: b.fcApproval.at } : null;
+  if (key === 'deptCc') return b.deptCcApproval?.decision === 'approve' ? { by: b.deptCcApproval.byName, at: b.deptCcApproval.at, remarks: b.deptCcApproval.remarks, signature: b.deptCcApproval.signature } : null;
+  if (key === 'fccc') return b.fcccApproval ? { by: b.fcccApproval.byName, at: b.fcccApproval.at, remarks: b.fcccApproval.remarks, signature: b.fcccApproval.signature } : null;
+  if (key === 'director') return b.directorApproval?.decision === 'approve' ? { by: b.directorApproval.byName, at: b.directorApproval.at, remarks: b.directorApproval.remarks, signature: b.directorApproval.signature } : null;
+  return null;
+}
+
+/** The approval chain, step by step: done ✓ / now / next. */
+export function ApprovalTracker({ booking: b }) {
+  const chain = approvalChain(b);
+  const waitingFor = b.status === STATUS.FACULTY_CONCERN ? b.facultyConcern?.previousStatus : b.status;
+  const ended = [STATUS.REJECTED, STATUS.CANCELLED_BY_ADMIN, STATUS.CANCELLED_BY_STUDENT].includes(b.status);
+  const rows = [
+    { key: 'student', label: 'Student submitted', state: 'done', at: b.createdAt },
+    ...chain.map((st) => {
+      const rec = stepRecord(b, st.key);
+      return {
+        key: st.key,
+        label: st.key === 'deptCc' || st.key === 'director' ? `${st.label} (by email)` : st.label,
+        state: rec ? 'done' : !ended && waitingFor === st.status ? 'now' : 'next',
+        at: rec?.at,
+        by: rec?.by,
+        remarks: rec?.remarks,
+      };
+    }),
+    { key: 'admin', label: 'Institute admin informed', state: [STATUS.APPROVED, STATUS.COMPLETED].includes(b.status) ? 'done' : 'next' },
+  ];
+  return (
+    <ol className="chain">
+      {rows.map((r) => (
+        <li key={r.key} className={`chain-step ${r.state}`}>
+          <span className="chain-dot" aria-hidden>{r.state === 'done' ? '✓' : ''}</span>
+          <div>
+            <div className="chain-label">{r.label}{r.state === 'now' ? <span className="chain-now">{b.status === STATUS.FACULTY_CONCERN ? 'on hold — faculty concern' : 'waiting'}</span> : null}</div>
+            {(r.by || r.at) && <div className="tiny muted">{[r.by, r.at ? formatDateTime(r.at) : null].filter(Boolean).join(' · ')}</div>}
+            {r.remarks && <div className="tiny">“{r.remarks}”</div>}
+          </div>
+        </li>
+      ))}
+      {ended && <li className="chain-step ended"><span className="chain-dot" aria-hidden>✕</span><div className="chain-label">{STATUS_LABEL_TEXT[b.status] || b.status}{b.rejection?.reason ? ` — ${b.rejection.reason}` : ''}</div></li>}
+    </ol>
+  );
+}
+const STATUS_LABEL_TEXT = { REJECTED: 'Rejected', CANCELLED_BY_ADMIN: 'Cancelled by FC-CC', CANCELLED_BY_STUDENT: 'Cancelled by student' };
+
+/** Dept CC / Director decide from a one-click email; staff can re-send it. */
+export function EmailStepActions({ booking: b, role, compact = false }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (![STATUS.PENDING_DEPT_CC, STATUS.PENDING_DIRECTOR].includes(b.status) || !role) return null;
+  const who = b.status === STATUS.PENDING_DIRECTOR ? 'the Director' : `the ${b.department} CC`;
+  return (
+    <div className="row" style={{ gap: 8 }}>
+      <span className="small muted">Approval email sent to {who}.</span>
+      <button
+        className={`btn btn-ghost ${compact ? 'btn-sm' : ''}`}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const r = await call('resendDecisionEmail', { bookingId: b.id });
+            toast(`Email sent again${r?.sentTo ? ` to ${r.sentTo}` : ''}`, 'ok');
+          } catch (e) {
+            toast(e.message, 'error');
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Icon name="mail" /> Resend email
+      </button>
+    </div>
+  );
+}
+
 export function signatureEntries(b, sigs) {
   const steps = b.special?.steps || {};
   const out = [
@@ -366,6 +447,20 @@ export function signatureEntries(b, sigs) {
       note: b.signature?.signedBy && b.signature.signedBy !== b.signature.signerName ? `Entered by ${b.signature.signedBy}` : 'Declaration & undertaking',
     },
   ];
+  if (!isPaperSpecial(b)) {
+    const chain = approvalChain(b);
+    const done = [STATUS.APPROVED, STATUS.COMPLETED].includes(b.status);
+    chain.forEach((st, i) => {
+      const rec = stepRecord(b, st.key);
+      const last = i === chain.length - 1;
+      if (st.key === 'fcStudent') {
+        out.push({ key: st.key, role: 'FC student', pending: !rec, name: rec?.by, at: rec?.at, note: rec ? 'Approved online' : null });
+      } else {
+        out.push({ key: st.key, role: `${st.label}${last && done ? ' — Approved' : ''}`, pending: !rec, name: rec?.by, at: rec?.at, stamp: rec?.signature || null, approved: last && done, note: rec?.remarks || null });
+      }
+    });
+    return out;
+  }
   if (!b.isSpecial) {
     const a = b.fcccApproval;
     out.push({ key: 'fccc', role: 'FC-CC — Approved', pending: !a, name: a?.byName, at: a?.at, img: sigs.fccc, stamp: a?.signature || null, approved: Boolean(a) });

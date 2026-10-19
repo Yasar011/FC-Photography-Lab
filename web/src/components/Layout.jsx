@@ -118,7 +118,7 @@ export default function Layout() {
               <div className="nav-label">{ROLE_LABELS[role]}</div>
               <Item to="/admin" icon="home" end count={isStaff ? idmPending : 0} hot>Dashboard</Item>
               <Item to="/admin/calendar" icon="calendar">Lab calendar</Item>
-              <Item to="/admin/special" icon="stamp" count={special} hot>Special approvals</Item>
+              {special > 0 && <Item to="/admin/special" icon="stamp" count={special} hot>Special (paper forms)</Item>}
               <Item to="/admin/approvals" icon="checkCircle" count={fcccPending + fcStepPending} hot>Approvals</Item>
               <Item to="/admin/concerns" icon="flag" count={concerns} hot>Faculty concerns</Item>
               <Item to="/admin/bookings" icon="list">All bookings</Item>

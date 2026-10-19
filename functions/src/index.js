@@ -12,6 +12,7 @@ export {
   lookupStudent,
   searchStudents,
   recordEquipment,
+  resendDecisionEmail,
 } from './bookings.js';
 export {
   respondFcApproval,

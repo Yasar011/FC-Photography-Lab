@@ -16,7 +16,7 @@ import {
   BOOKING_STAFF_ROLES,
 
 } from './core.js';
-import { SMTP_PASS, sendAll, adminEmails, appLink } from './mail.js';
+import { SMTP_PASS, sendAll, adminEmails, appLink, requestDecision } from './mail.js';
 import * as N from './notify.js';
 import {
   SLOT_TAKEN_MSG,
@@ -43,6 +43,8 @@ import {
   niftKey,
   digitalSignature,
   SLOT_HOLDING_STATUSES,
+  approvalChain,
+  statusAfter,
 } from '../shared/constants.js';
 import {
   evaluateRange,
@@ -223,9 +225,9 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
 
   const answers = collectAnswers(settings.questions, data.answers);
 
-  // Special bookings: every person using the lab — full name, department, hostel and room.
+  // Everyone using the lab — full name, department, hostel and room number (every booking).
   let participants = null;
-  if (isSpecial) {
+  {
     const list = Array.isArray(data.participants) ? data.participants : [];
     const max = Number(rules.maxParticipants) || 30;
     if (!list.length) fail('invalid-argument', 'Please add every person who will use the lab (name, department, hostel and room).');
@@ -349,7 +351,7 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
     faculty: facultyEmail ? { name: facultyName, email: facultyEmail } : null,
     isSpecial,
     specialReasons: isSpecial ? specialReasons({ date, startHour, endHour, rules, holiday, overrides }) : [],
-    special: isSpecial ? { required: true, steps: {} } : null,
+    special: isSpecial ? { required: true } : null,
     usesOverride: range.usesOverride,
     // Normal bookings: FC Lab Assistant approves in the portal (printing optional).
     // Nothing is confirmed without the FC-CC: normal bookings go to the FC-CC,
@@ -406,11 +408,9 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
       state: FC_APPROVAL_STATE.PENDING,
       createdAt: now,
     };
-  } else if (isSpecial) {
-    booking.status = STATUS.PENDING_SPECIAL_APPROVAL;
-    addHistory(booking, { status: booking.status, event: 'SPECIAL APPROVAL REQUIRED', actor: by, note: booking.specialReasons.join(', '), at: now + 1 });
   } else {
-    booking.status = STATUS.PENDING_FCCC_APPROVAL;
+    // FC / FC-IDM students (normal or special) go straight to the FC-CC.
+    booking.status = approvalChain(booking)[0].status;
     addHistory(booking, { status: booking.status, event: 'SENT TO FC-CC FOR APPROVAL', actor: by, at: now + 1 });
   }
 
@@ -452,10 +452,6 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
   else emails.push(N.submittedEmail(booking));
   if (fcApprovalId) emails.push(N.fcRequestEmail(booking, fcApprovalId, fcStudent.email));
   if (booking.status === STATUS.PENDING_FCCC_APPROVAL) emails.push(N.fcccApprovalNeededEmail(booking, await adminEmails(['fccc', 'main'])));
-  if (booking.status === STATUS.PENDING_SPECIAL_APPROVAL) {
-    emails.push(N.specialRequiredEmail(booking, booking.email));
-    emails.push(N.specialRequiredEmail(booking, await adminEmails(['staff', 'fccc', 'main']), true));
-  }
   if (booking.faculty) {
     emails.push(N.facultyEmail(booking, appLink(`/faculty/${id}?t=${facultyToken}`)));
   }
@@ -571,7 +567,9 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
       return addHistory(b, { event: 'REJECTED', actor: by, note: remarks });
     }
     // Approval is only for bookings whose other approvals are complete.
-    if (b.status === STATUS.PENDING_FC_APPROVAL) fail('failed-precondition', 'The FC student must approve this booking from their own account first.');
+    if (b.status === STATUS.PENDING_FC_APPROVAL) fail('failed-precondition', 'The FC student must approve this booking first.');
+    if (b.status === STATUS.PENDING_DEPT_CC) fail('failed-precondition', 'The Dept CC must approve this booking first.');
+    if (b.status === STATUS.PENDING_DIRECTOR) fail('failed-precondition', 'This booking is now with the Director.');
     if (b.status === STATUS.PENDING_SPECIAL_APPROVAL) fail('failed-precondition', 'Use the special approval tracker to approve this booking.');
     if (b.status === STATUS.FACULTY_CONCERN) fail('failed-precondition', 'Resolve the faculty concern instead.');
     if (![STATUS.SUBMITTED, STATUS.FC_APPROVED, STATUS.PENDING_FCCC_APPROVAL].includes(b.status)) fail('failed-precondition', 'This booking cannot be approved.');
@@ -580,8 +578,12 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
       byUid: actor.uid, byName: actor.name, role: actor.role, at, remarks: remarks || null,
       signature: digitalSignature({ name: actor.name, role: 'FC-CC', at, ref: bookingId }),
     };
-    b.status = STATUS.APPROVED;
-    return addHistory(b, { event: 'APPROVED & DIGITALLY SIGNED BY FC-CC', actor: by, note: remarks });
+    b.status = statusAfter(b, 'fccc'); // special → the Director next
+    return addHistory(b, {
+      event: b.status === STATUS.APPROVED ? 'APPROVED & DIGITALLY SIGNED BY FC-CC' : 'FC-CC APPROVED & SIGNED — SENT TO THE DIRECTOR',
+      actor: by,
+      note: remarks,
+    });
   });
 
   await syncSlots(after);
@@ -596,9 +598,13 @@ export const adminBookingDecision = onCall(CALL_OPTS, async (request) => {
     remarks,
     auditAction: decision === 'approve' ? 'ADMIN_APPROVED' : 'ADMIN_REJECTED',
   });
-  await sendAll(decision === 'approve'
-    ? [N.approvedEmail(after), N.adminApprovedNoticeEmail(after, settings.bookingRules.approvalNotifyEmails)]
-    : [N.rejectedEmail(after, remarks)]);
+  if (decision === 'reject') await sendAll([N.rejectedEmail(after, remarks)]);
+  else if (after.status === STATUS.APPROVED) {
+    await sendAll([N.approvedEmail(after), N.adminApprovedNoticeEmail(after, settings.bookingRules.approvalNotifyEmails)]);
+  } else {
+    await sendAll([N.stepApprovedEmail(after, 'FC-CC', 'Director')]);
+    await requestDecision(after); // one-click email to the Director
+  }
   return { status: after.status };
 });
 
@@ -710,4 +716,17 @@ export const recordEquipment = onCall(async (request) => {
   });
   await db.ref(ap).set(av);
   return { ok: true, equipmentLog: after.equipmentLog };
+});
+
+// ---- Re-send the one-click email to the Dept CC / Director (FC staff) ----------
+export const resendDecisionEmail = onCall(async (request) => {
+  const actor = await getActor(request);
+  requireRole(actor, ADMIN_ROLES, 'Only FC staff can re-send approval emails.');
+  const b = (await db.ref(`bookings/${String(request.data?.bookingId || '')}`).get()).val();
+  if (!b) fail('not-found', 'Booking not found.');
+  if (![STATUS.PENDING_DEPT_CC, STATUS.PENDING_DIRECTOR].includes(b.status)) fail('failed-precondition', 'This booking is not waiting for the Dept CC or the Director.');
+  const r = await requestDecision(b);
+  if (r?.skipped) fail('failed-precondition', 'Email is not set up (Google Sheet).');
+  if (!r?.ok) fail('internal', `The Google Sheet could not send it: ${r?.error || 'unknown error'}`);
+  return { ok: true, sentTo: r.sentTo || null };
 });

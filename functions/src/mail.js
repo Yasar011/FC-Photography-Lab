@@ -92,6 +92,21 @@ async function postToSheet(payload) {
   return out;
 }
 
+/**
+ * Ask the Google Sheet to email the next one-click approver (Dept CC / Director)
+ * for this booking. The Sheet makes the secret link itself — the browser never
+ * sees it — so nobody can approve on the approver's behalf. Never throws.
+ */
+export async function requestDecision(b) {
+  if (!sheetsUrl() || !b) return { ok: false, skipped: true };
+  try {
+    return await postToSheet({ action: 'requestDecision', booking: sheetBooking(b) });
+  } catch (err) {
+    logger.error('Could not send the approval request email', { bookingId: b.id, err: err.message });
+    return { ok: false, error: err.message };
+  }
+}
+
 /** Update a booking's row in the Google Sheet (for changes that send no email). Never throws. */
 export async function syncSheetBooking(b) {
   if (!sheetsUrl() || !b) return;

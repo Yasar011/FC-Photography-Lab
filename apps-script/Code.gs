@@ -66,6 +66,13 @@ function doPost(e) {
       return json({ ok: false, error: 'Unauthorized' });
     }
 
+    // Email the next one-click approver (Dept CC / Director) for this booking.
+    if (body.action === 'requestDecision') {
+      const id = body.booking && body.booking.id;
+      if (!id) return json({ ok: false, error: 'No booking' });
+      return json(requestDecisionFor(id));
+    }
+
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
@@ -167,7 +174,9 @@ function summarize(b) {
   };
 }
 
-function doGet() {
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (p.t && p.b && p.s) return decisionPage(p);
   return ContentService.createTextOutput('FC Photography Lab mail endpoint is running.');
 }
 
@@ -521,4 +530,249 @@ function dailySummary() {
   const text = (waiting ? waiting + ' booking(s) waiting for you' : 'Nothing waiting for you') + ' — ' + dateLabel + '\n' + APP_URL + '/admin/approvals';
   const mail = { type: 'daily_summary', to: to, subject: 'FC Photography Lab – ' + (waiting ? waiting + ' waiting for you' : 'nothing waiting') + ' · ' + dateLabel, html: html, text: text };
   logEmail(mail, null, sendMail(mail, props, null));
+}
+
+// ---------------------------------------------------------------------------
+// One-click approvals: Dept CC and Director (no sign-in)
+// ---------------------------------------------------------------------------
+// The website asks for the email (action "requestDecision"). This script makes
+// a long random link itself, stores only its hash in the database, and emails
+// Approve / Reject buttons. The link opens a page here where remarks are
+// required. Needs the SA_JSON script property (see "Daily summary").
+
+const STEPS = {
+  deptCc: { status: 'PENDING_DEPT_CC', field: 'deptCcApproval', next: 'PENDING_FCCC_APPROVAL' },
+  director: { status: 'PENDING_DIRECTOR', field: 'directorApproval', next: 'APPROVED' },
+};
+
+function stepFor(b) {
+  if (!b) return null;
+  if (b.status === 'PENDING_DEPT_CC') return 'deptCc';
+  if (b.status === 'PENDING_DIRECTOR') return 'director';
+  return null;
+}
+
+function stepLabel(step, b) {
+  return step === 'director' ? 'Director' : (b.department || 'Dept') + ' CC';
+}
+
+/** Who approves this step: Settings → Director / Dept CC emails; else the Main Admin(s). */
+function approverEmails(step, b) {
+  const rules = adminDb('settings/bookingRules') || {};
+  const set = step === 'director' ? rules.directorEmail : (rules.deptCcEmails || {})[b.department];
+  if (set) return { to: [String(set).toLowerCase()], fallback: false };
+  const admins = adminDb('admins') || {};
+  const main = Object.keys(admins).map(function (k) { return admins[k]; })
+    .filter(function (a) { return a && a.role === 'main' && a.email; })
+    .map(function (a) { return a.email; });
+  return { to: main, fallback: true };
+}
+
+function sha256Hex(text) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8)
+    .map(function (x) { return ('0' + ((x + 256) % 256).toString(16)).slice(-2); }).join('');
+}
+
+function adminPatch(updates) {
+  const res = UrlFetchApp.fetch(DB_URL + '/.json?access_token=' + encodeURIComponent(serviceToken()), {
+    method: 'patch', contentType: 'application/json', payload: JSON.stringify(updates), muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) throw new Error('Database write failed (' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 200));
+}
+
+const escHtml = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+
+function peopleLines(b) {
+  return (b.participants || []).map(function (p, i) { return (i + 1) + '. ' + p.name + ' · ' + p.department + ' · Hostel ' + p.hostel + ', Room ' + p.room; });
+}
+
+function bookingRowsHtml(b) {
+  const when = Utilities.formatDate(new Date(b.date + 'T12:00:00+05:30'), 'Asia/Kolkata', 'EEE d MMM yyyy') + ', ' + hourLabel(b.startHour) + ' – ' + hourLabel(b.endHour);
+  const rows = [
+    ['Booking ID', b.id], ['Student', b.studentName + ' (' + b.niftId + ')'], ['Department / Sem', b.department + ' · Semester ' + b.semester],
+    ['When', when + (b.isSpecial ? ' — SPECIAL (' + (b.specialReasons || []).join(', ') + ')' : '')],
+    ['Purpose', b.purpose], ['Equipment', (b.equipmentList || []).join(', ')],
+    ['Faculty', b.faculty ? b.faculty.name + ' <' + b.faculty.email + '>' : ''],
+    ['FC student', b.fcStudent ? b.fcStudent.name + ' (' + b.fcStudent.niftId + ')' : ''],
+    ['People using the lab (' + (b.participants || []).length + ')', peopleLines(b).join('\n')],
+  ].filter(function (r) { return r[1]; });
+  return '<table cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #eee;font-size:14px">' + rows.map(function (r) {
+    return '<tr><td style="padding:6px 12px 6px 0;color:#555;white-space:nowrap;vertical-align:top">' + escHtml(r[0]) + '</td><td style="padding:6px 0;vertical-align:top">' + escHtml(r[1]).replace(/\n/g, '<br>') + '</td></tr>';
+  }).join('') + '</table>';
+}
+
+function mailFrame(heading, introHtml, bodyHtml) {
+  return '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:620px">' +
+    '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#555">NIFT Jodhpur · FC Photography Lab</div>' +
+    '<h2 style="margin:6px 0 10px;font-size:18px">' + escHtml(heading) + '</h2>' + introHtml + bodyHtml +
+    '<p style="margin:18px 0 0;font-size:12px;color:#777">Automated message from the FC Photography Lab booking system.</p></div>';
+}
+
+/** Make a new one-click link for the current step and email it to the approver. */
+function requestDecisionFor(bookingId) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const b = adminDb('bookings/' + bookingId);
+    const step = stepFor(b);
+    if (!step) return { ok: false, error: 'This booking is not waiting for the Dept CC or the Director.' };
+    const who = approverEmails(step, b);
+    if (!who.to.length) return { ok: false, error: 'No email set for the ' + stepLabel(step, b) + ' (Settings).' };
+    const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+    const upd = {};
+    upd['decisionTokens/' + bookingId + '/' + step] = { hash: sha256Hex(token), to: who.to.join(', '), createdAt: Date.now() };
+    adminPatch(upd);
+
+    const base = ScriptApp.getService().getUrl();
+    const link = function (d) { return base + '?b=' + encodeURIComponent(bookingId) + '&s=' + step + '&t=' + token + '&d=' + d; };
+    const label = stepLabel(step, b);
+    const btn = function (href, text, color) {
+      return '<a href="' + href + '" style="display:inline-block;background:' + color + ';color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:6px;margin-right:10px">' + text + '</a>';
+    };
+    const intro = (who.fallback ? '<p style="background:#fff4e5;padding:8px 10px;border-radius:6px"><b>No ' + escHtml(label) + ' email is set in Settings</b>, so this request came to you (Main Admin). Please forward it, or set the email under Rules &amp; questions.</p>' : '') +
+      '<p>' + escHtml(b.studentName) + ' has requested the FC Photography Lab. Your approval as <b>' + escHtml(label) + '</b> is needed. Remarks are required for both Approve and Reject.</p>' +
+      '<p style="margin:16px 0">' + btn(link('approve'), '✓ Approve', '#188038') + btn(link('reject'), '✕ Reject', '#b3261e') + '</p>';
+    const html = mailFrame(label + ' approval needed — ' + b.id, intro, bookingRowsHtml(b));
+    const mail = { type: 'decision_request_' + step, to: who.to, subject: label + ' approval needed – ' + b.id, html: html, text: 'Approve or reject: ' + link('approve') + '\n' + link('reject') };
+    const props = PropertiesService.getScriptProperties();
+    logEmail(mail, summarize(b), sendMail(mail, props, summarize(b)));
+    return { ok: true, sentTo: who.to.join(', ') };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Checks a one-click link. Returns { b, step } or { error }. */
+function checkDecisionLink(bookingId, step, token) {
+  if (!STEPS[step] || !/^FC-\d{6}-\d{4,}$/.test(String(bookingId || '')) || !/^[a-f0-9]{64}$/.test(String(token || ''))) return { error: 'This link is not valid.' };
+  const rec = adminDb('decisionTokens/' + bookingId + '/' + step);
+  if (!rec || rec.hash !== sha256Hex(token)) return { error: 'This link is not valid or a newer one was sent.' };
+  if (rec.usedAt) return { error: 'This decision has already been recorded. Thank you.' };
+  const b = adminDb('bookings/' + bookingId);
+  if (!b) return { error: 'Booking not found.' };
+  if (b.status === 'FACULTY_CONCERN') return { error: 'This booking is on hold: the faculty raised a concern. The FC-CC will decide first; you will get a new email if your approval is still needed.' };
+  if (b.status !== STEPS[step].status) return { error: 'This booking is no longer waiting for this approval (now: ' + (STATUS_LABELS[b.status] || b.status) + ').' };
+  if (b.endAt && b.endAt < Date.now()) return { error: 'This booking time has already passed.' };
+  return { b: b, step: step };
+}
+
+function decisionPage(p) {
+  const chk = checkDecisionLink(p.b, p.s, p.t);
+  const shell = function (inner) {
+    return HtmlService.createHtmlOutput('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>FC Photography Lab — Approval</title>' +
+      '<style>body{margin:0;background:#f4f2ee;font-family:Arial,sans-serif;color:#141414}main{max-width:640px;margin:0 auto;padding:20px}' +
+      '.card{background:#fff;border-radius:14px;padding:20px;margin-top:14px}h1{font-size:22px;margin:0 0 6px}label{font-weight:700;display:block;margin:14px 0 6px}' +
+      'textarea{width:100%;box-sizing:border-box;min-height:90px;font:inherit;padding:10px;border:1px solid #bbb;border-radius:8px}' +
+      '.opts{display:flex;gap:10px;flex-wrap:wrap}.opts label{font-weight:600;display:flex;gap:6px;align-items:center;border:2px solid #ddd;border-radius:10px;padding:10px 14px;margin:0;cursor:pointer}' +
+      'button{margin-top:16px;background:#141414;color:#fff;border:0;border-radius:8px;padding:14px 22px;font-size:16px;font-weight:700;cursor:pointer;min-height:48px}' +
+      '.err{color:#b3261e;font-weight:700}.ok{color:#188038;font-weight:700}</style></head><body><main>' +
+      '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#555">NIFT Jodhpur · FC Photography Lab</div>' + inner + '</main></body></html>')
+      .setTitle('FC Photography Lab — Approval').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  };
+  if (chk.error) return shell('<div class="card"><h1>Approval</h1><p class="err">' + escHtml(chk.error) + '</p></div>');
+  const b = chk.b;
+  const label = stepLabel(chk.step, b);
+  const pre = p.d === 'reject' ? 'reject' : 'approve';
+  return shell('<div class="card"><h1>' + escHtml(label) + ' approval — ' + escHtml(b.id) + '</h1>' + bookingRowsHtml(b) + '</div>' +
+    '<div class="card"><form id="f" onsubmit="return send(event)">' +
+    '<div class="opts"><label><input type="radio" name="d" value="approve"' + (pre === 'approve' ? ' checked' : '') + '> ✓ Approve</label>' +
+    '<label><input type="radio" name="d" value="reject"' + (pre === 'reject' ? ' checked' : '') + '> ✕ Reject</label></div>' +
+    '<label for="r">Remarks (required)</label><textarea id="r" required minlength="3" maxlength="500" placeholder="Your remarks"></textarea>' +
+    '<button id="go" type="submit">Submit decision</button><p id="msg" aria-live="polite"></p></form></div>' +
+    '<script>function send(e){e.preventDefault();var r=document.getElementById("r").value.trim();var m=document.getElementById("msg");' +
+    'if(r.length<3){m.className="err";m.textContent="Please write your remarks.";return false;}' +
+    'var d=document.querySelector("input[name=d]:checked").value;document.getElementById("go").disabled=true;m.className="";m.textContent="Saving…";' +
+    'google.script.run.withSuccessHandler(function(x){m.className=x.ok?"ok":"err";m.textContent=x.message;if(!x.ok)document.getElementById("go").disabled=false;})' +
+    '.withFailureHandler(function(err){m.className="err";m.textContent=String(err&&err.message||err);document.getElementById("go").disabled=false;})' +
+    '.submitDecision(' + JSON.stringify(b.id) + ',' + JSON.stringify(chk.step) + ',' + JSON.stringify(p.t) + ',d,r);return false;}</script>');
+}
+
+function signCode() {
+  let h = 0x811c9dc5;
+  const str = Array.prototype.slice.call(arguments).join('|');
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return ('00000000' + h.toString(16).toUpperCase()).slice(-8);
+}
+
+/** Called from the decision page. Records the decision and moves the booking on. */
+function submitDecision(bookingId, step, token, decision, remarks) {
+  remarks = String(remarks || '').trim().slice(0, 500);
+  if (remarks.length < 3) return { ok: false, message: 'Please write your remarks.' };
+  if (decision !== 'approve' && decision !== 'reject') return { ok: false, message: 'Choose Approve or Reject.' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const chk = checkDecisionLink(bookingId, step, token);
+    if (chk.error) return { ok: false, message: chk.error };
+    const b = chk.b;
+    const label = stepLabel(step, b);
+    const who = approverEmails(step, b);
+    const now = Date.now();
+    const approve = decision === 'approve';
+    const next = approve ? STEPS[step].next : 'REJECTED';
+    const record = {
+      decision: decision, byName: label, byEmail: who.to.join(', '), at: now, remarks: remarks,
+      signature: approve ? { digital: true, name: label, id: who.to[0] || null, role: label, at: now, code: 'FPL-NJ-' + signCode(bookingId, label, who.to[0], label, now) } : null,
+    };
+    const hKey = 'z' + now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    const event = approve
+      ? (step === 'director' ? 'APPROVED BY THE DIRECTOR — BOOKING CONFIRMED' : label.toUpperCase() + ' APPROVED — SENT TO FC-CC')
+      : 'REJECTED BY THE ' + label.toUpperCase();
+    const upd = {};
+    const base = 'bookings/' + bookingId + '/';
+    upd[base + 'status'] = next;
+    upd[base + 'updatedAt'] = now;
+    upd[base + STEPS[step].field] = record;
+    upd[base + 'history/' + hKey] = { at: now, status: next, event: event, by: label, uid: 'email:' + step, role: step, note: remarks };
+    if (!approve) upd[base + 'rejection'] = { byUid: 'email:' + step, byName: label, role: step, at: now, reason: label + ': ' + remarks };
+    for (let h = b.startHour; h < b.endHour; h++) {
+      const k = 'bookingSlots/' + b.date + '/h' + ('0' + h).slice(-2);
+      upd[approve ? k + '/status' : k] = approve ? next : null;
+    }
+    upd['decisionTokens/' + bookingId + '/' + step + '/usedAt'] = now;
+    upd['auditLogs/' + hKey] = { uid: 'system', name: label + ' (email link)', role: step, action: (step === 'director' ? 'DIRECTOR_' : 'DEPT_CC_') + (approve ? 'APPROVED' : 'REJECTED'), bookingId: bookingId, niftId: b.niftId, details: { remarks: remarks }, at: now };
+    adminPatch(upd);
+
+    const after = adminDb('bookings/' + bookingId);
+    const sum = summarize(after);
+    upsertBooking(sum);
+    notifyAfterDecision(after, step, approve, label, remarks);
+    return { ok: true, message: approve ? 'Approved. Thank you — the next person has been informed.' : 'Rejected. The student has been informed.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function notifyAfterDecision(b, step, approve, label, remarks) {
+  const props = PropertiesService.getScriptProperties();
+  const sum = summarize(b);
+  const send = function (type, to, subject, heading, introHtml) {
+    if (!to || !to.length) return;
+    const mail = { type: type, to: to, subject: subject, html: mailFrame(heading, introHtml, bookingRowsHtml(b)), text: heading + '\n' + APP_URL + '/bookings/' + b.id };
+    logEmail(mail, sum, sendMail(mail, props, sum));
+  };
+  const link = '<p><a href="' + APP_URL + '/bookings/' + b.id + '">Open the booking</a></p>';
+  const rem = '<p><b>Remarks:</b> ' + escHtml(remarks) + '</p>';
+  const admins = adminDb('admins') || {};
+  const fccc = Object.keys(admins).map(function (k) { return admins[k]; }).filter(function (a) { return a && (a.role === 'fccc' || a.role === 'main') && a.email; }).map(function (a) { return a.email; });
+  if (!approve) {
+    send('booking_rejected', [b.email], 'Rejected by the ' + label + ' – ' + b.id, 'Your booking was not approved', '<p>The ' + escHtml(label) + ' rejected your booking. The slot has been released.</p>' + rem + link);
+    if (step === 'director') send('director_rejected', fccc, 'Director rejected – ' + b.id, 'The Director rejected a booking you approved', rem + link);
+    return;
+  }
+  if (step === 'deptCc') {
+    send('step_approved', [b.email], label + ' approved – ' + b.id, label + ' approved your booking', '<p>Your booking is now with the FC-CC. It is confirmed only after the last approval.</p>' + rem + link);
+    send('fccc_approval_needed', fccc, 'Waiting for your approval – ' + b.id, 'A booking is waiting for your approval', '<p>The ' + escHtml(label) + ' approved this booking. Please Sign &amp; approve or reject it in the portal.</p>' + rem +
+      '<p><a href="' + APP_URL + '/admin/approvals" style="background:#141414;color:#fff;padding:10px 16px;border-radius:4px;text-decoration:none;font-weight:600">Open Approvals</a></p>');
+    return;
+  }
+  // Director approved → confirmed: student + institute admin (with everyone's hostel and room).
+  send('booking_approved', [b.email], 'Approved – FC Photography Lab booking ' + b.id, 'Your booking is approved', '<p>The Director approved your special booking. It is confirmed. No printing is needed; the institute admin has been informed. Show your Booking ID and NIFT ID card at the lab.</p>' + rem + link);
+  const rules = adminDb('settings/bookingRules') || {};
+  const notify = Array.isArray(rules.approvalNotifyEmails) ? rules.approvalNotifyEmails : ['admin.jodhpur@nift.ac.in'];
+  send('admin_approval_notice', notify, 'Approved (special permission) – FC Photography Lab booking ' + b.id, 'Special booking approved — FC-CC and Director',
+    '<p>This special-permission booking (' + escHtml((b.specialReasons || []).join(', ')) + ') is approved by the FC-CC and the Director. Everyone using the lab is listed below with hostel and room.</p>' + link);
 }

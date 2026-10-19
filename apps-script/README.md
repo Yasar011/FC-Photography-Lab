@@ -41,6 +41,22 @@ The website now sends a proof of who is signed in instead of a secret. The new `
 ### Copy of every email to the sheet owner
 In live mode, the sheet owner (fc.jodhpur@nift.ac.in) gets a **hidden copy (BCC)** of every email, inside the same conversation. Run **`stopCopies`** to turn this off and **`sendCopies`** to turn it back on. Set the `COPY_TO` script property to send the copies to a different address.
 
+### One-click approvals: Dept CC and Director
+Approval chains:
+- **Other departments:** FC student → **Dept CC** → FC-CC, then the **Director** if it's a special booking.
+- **FC students:** FC-CC, then the **Director** if it's a special booking.
+
+The Dept CC and the Director don't sign in. They get an email with **Approve / Reject** buttons, which opens a page where **remarks are required**. This script:
+- makes each link itself (a long secret code) and stores only its hash, so students never see it;
+- uses each link only once;
+- cancels the old link when a new one is sent.
+
+When the Director approves, the student and admin.jodhpur are emailed, including the people list.
+
+Set the emails in the website under **Rules & questions → One-click approvers**: the Director and the AD / BFT / TD / FD / MFM CCs. If one is empty, that request goes to the Main Admin, who can forward it.
+
+**Needs the `SA_JSON` script property**, the same one as the daily summary below. Without it, the approval emails can't be sent.
+
 ### Daily summary to the FC-CC (about 4:15 PM)
 Every day at about 4:15 PM the FC-CC and the Main Admin get one email listing:
 - bookings waiting for approval, marked **TODAY** when they're today;

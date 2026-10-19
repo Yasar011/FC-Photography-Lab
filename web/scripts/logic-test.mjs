@@ -60,6 +60,21 @@ try {
     }
   };
   const booking = (id) => store.getRaw(`bookings/${id}`);
+  // Same database changes the Google Sheet makes when the Dept CC / Director decides (tested separately).
+  const emailDecision = (id, step, decision, remarks = 'Checked') => {
+    const b = booking(id);
+    const now = Date.now();
+    const next = decision === 'approve' ? (step === 'director' ? STATUS.APPROVED : STATUS.PENDING_FCCC_APPROVAL) : STATUS.REJECTED;
+    const label = step === 'director' ? 'Director' : `${b.department} CC`;
+    store.update(`bookings/${id}`, {
+      status: next,
+      [step === 'director' ? 'directorApproval' : 'deptCcApproval']: { decision, byName: label, at: now, remarks, ...(decision === 'approve' ? { signature: { digital: true, name: label, role: label, at: now, code: 'FPL-NJ-00000000' } } : {}) },
+    });
+    for (let h = b.startHour; h < b.endHour; h++) {
+      const k = `bookingSlots/${b.date}/${cal.slotKey(h)}`;
+      if (decision === 'approve') store.update(k, { status: next }); else store.set(k, null);
+    }
+  };
 
   // ---- dates ----
   const today = cal.todayIST();
@@ -158,7 +173,9 @@ try {
   const appr = booking(oth3.bookingId).fcApprovalId;
   await expectFail('Wrong FC student answers', call('respondFcApproval', { approvalId: appr, decision: 'approve' }, 'demo-fc2'), /another student/i);
   await expectOk('Named FC student approves', call('respondFcApproval', { approvalId: appr, decision: 'approve' }, 'demo-fc'));
-  check('→ waiting for FC-CC', booking(oth3.bookingId).status === STATUS.PENDING_FCCC_APPROVAL);
+  check('→ waiting for the Dept CC (BFT CC)', booking(oth3.bookingId).status === STATUS.PENDING_DEPT_CC);
+  await expectFail('FC-CC cannot approve before the Dept CC', call('adminBookingDecision', { bookingId: oth3.bookingId, decision: 'approve' }, 'demo-fccc'), /Dept CC must approve/);
+  await expectFail('Re-send the Dept CC email without the Google Sheet set up', call('resendDecisionEmail', { bookingId: oth3.bookingId }, 'demo-staff'), /not set up/);
   await expectFail('FC student answers twice', call('respondFcApproval', { approvalId: appr, decision: 'reject', reason: 'x' }, 'demo-fc'), /already/i);
 
   const r2 = await expectOk('Other dept books WE 15–17 with FC student', call('createBooking', base(WE, 15, 17, { fcStudentNiftId: 'FC/24/022' }), 'demo-ad'));
@@ -197,18 +214,29 @@ try {
   const sp = await expectOk('FC student books weekend 9–12 with 2 people', call('createBooking', base(WE, 9, 12), 'demo-fc'));
   check('people list stored (name, dept, hostel, room)', booking(sp.bookingId)?.participants?.length === 2 && booking(sp.bookingId).participants[1].room === '202');
   check('number of people = list length', booking(sp.bookingId)?.answers?.q_team?.value === 2);
-  check('normal bookings store no people list', !booking(fc4.bookingId)?.participants);
-  check('→ PENDING_SPECIAL_APPROVAL', booking(sp.bookingId).status === STATUS.PENDING_SPECIAL_APPROVAL);
-  await expectFail('FC-CC final approval before the form is issued', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'final', decision: 'approve' }, 'demo-fccc'), /issue the form/i);
-  await expectFail('FC Lab Assistant rejects (FC-CC only)', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'fcAssistant', decision: 'reject', remarks: 'x' }, 'demo-staff'), /FC-CC/);
-  await expectOk('FC Lab Assistant issues the form', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'fcAssistant', decision: 'approve' }, 'demo-staff'));
-  await expectFail('FC Lab Assistant gives final approval', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'final', decision: 'approve' }, 'demo-staff'));
-  await expectOk('FC-CC final approval', call('specialApprovalStep', { bookingId: sp.bookingId, step: 'final', decision: 'approve' }, 'demo-fccc'));
-  const spb = booking(sp.bookingId);
-  check('→ APPROVED with FC-CC digital stamp; Director verified on paper', spb.status === STATUS.APPROVED && spb.special.steps.final.signature?.digital && spb.special.steps.director?.paper);
-  const notice = Object.values(store.getRaw('demoOutbox') || {}).find((m) => m.to.includes('admin.jodhpur@nift.ac.in') && m.subject.includes(sp.bookingId));
-  check('admin.jodhpur@nift.ac.in told "FC-CC approved" with every person, hostel and room', Boolean(notice) && /Test Person Two · FD · Girls Hostel, Room 202/.test(notice.text));
-  check('admin.jodhpur also told about normal approvals', Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.to.includes('admin.jodhpur@nift.ac.in') && m.subject.includes(fc4.bookingId)));
+  check('normal bookings store the people list too', booking(fc4.bookingId)?.participants?.length === 2);
+  check('special FC booking → straight to the FC-CC (no printing)', booking(sp.bookingId).status === STATUS.PENDING_FCCC_APPROVAL && booking(sp.bookingId).isSpecial === true);
+  await expectFail('FC Lab Assistant approves the special booking', call('adminBookingDecision', { bookingId: sp.bookingId, decision: 'approve' }, 'demo-staff'), /FC-CC/);
+  await expectOk('FC-CC approves & signs', call('adminBookingDecision', { bookingId: sp.bookingId, decision: 'approve' }, 'demo-fccc'));
+  check('→ now with the Director (FC-CC stamp saved)', booking(sp.bookingId).status === STATUS.PENDING_DIRECTOR && /^FPL-NJ-/.test(booking(sp.bookingId).fcccApproval?.signature?.code || ''));
+  check('student told "FC-CC approved — now with the Director"', Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.subject.startsWith('FC-CC approved') && m.subject.includes(sp.bookingId)));
+  check('admin.jodhpur NOT told yet (Director still to approve)', !Object.values(store.getRaw('demoOutbox') || {}).some((m) => m.to.includes('admin.jodhpur@nift.ac.in') && m.subject.includes(sp.bookingId)));
+  await expectFail('FC-CC approves again', call('adminBookingDecision', { bookingId: sp.bookingId, decision: 'approve' }, 'demo-fccc'), /with the Director/);
+  emailDecision(sp.bookingId, 'director', 'approve');
+  check('Director approves by email → APPROVED', booking(sp.bookingId).status === STATUS.APPROVED);
+  const notice = Object.values(store.getRaw('demoOutbox') || {}).find((m) => m.to.includes('admin.jodhpur@nift.ac.in') && m.subject.includes(fc4.bookingId));
+  check('admin.jodhpur told about FC-CC approvals with every person, hostel and room', Boolean(notice) && /Test Person Two · FD · Girls Hostel, Room 202/.test(notice.text));
+
+  console.log('\n6b. Other department, special: FC student → Dept CC → FC-CC → Director');
+  const os1 = await expectOk('FD student books weekend 12–14 (special) with an FC student', call('createBooking', base(WE, 12, 14, { fcStudentNiftId: 'FC/23/014' }), 'demo-fd'));
+  await expectOk('FC student approves', call('respondFcApproval', { approvalId: booking(os1?.bookingId)?.fcApprovalId, decision: 'approve' }, 'demo-fc'));
+  check('→ Dept CC', booking(os1.bookingId).status === STATUS.PENDING_DEPT_CC);
+  emailDecision(os1.bookingId, 'deptCc', 'approve');
+  check('Dept CC approves by email → FC-CC', booking(os1.bookingId).status === STATUS.PENDING_FCCC_APPROVAL);
+  await expectOk('FC-CC approves', call('adminBookingDecision', { bookingId: os1.bookingId, decision: 'approve' }, 'demo-fccc'));
+  check('→ Director', booking(os1.bookingId).status === STATUS.PENDING_DIRECTOR);
+  emailDecision(os1.bookingId, 'director', 'reject', 'Not this weekend');
+  check('Director rejects → REJECTED and the slot is free again', booking(os1.bookingId).status === STATUS.REJECTED && !Object.values(store.getRaw(`bookingSlots/${WE}`) || {}).some((x) => x.bookingId === os1.bookingId));
 
   // ---- 7. Faculty "I DID NOT APPROVE THIS" ----
   console.log('\n7. Faculty concern');
@@ -261,8 +289,10 @@ try {
   await expectFail('Another student answers for the FC student', call('respondFcApproval', { approvalId: fcwId, decision: 'approve' }, 'demo-fc2'));
   await expectFail('Staff reject for the FC student without a reason', call('respondFcApproval', { approvalId: fcwId, decision: 'reject' }, 'demo-staff'), /reason/i);
   await expectOk('Staff approve on behalf of the FC student', call('respondFcApproval', { approvalId: fcwId, decision: 'approve' }, 'demo-staff'));
-  check('→ waiting for FC-CC, marked "FC staff, for FC student"', booking(fcw.bookingId).status === STATUS.PENDING_FCCC_APPROVAL && booking(fcw.bookingId).fcApproval?.onBehalf === true && /FC staff/.test(booking(fcw.bookingId).fcApproval.byName));
+  check('→ Dept CC next, marked "FC staff, for FC student"', booking(fcw.bookingId).status === STATUS.PENDING_DEPT_CC && booking(fcw.bookingId).fcApproval?.onBehalf === true && /FC staff/.test(booking(fcw.bookingId).fcApproval.byName));
+  emailDecision(fcw.bookingId, 'deptCc', 'approve');
   await call('adminBookingDecision', { bookingId: fcw.bookingId, decision: 'approve' }, 'demo-fccc');
+  check('normal other-department booking: FC-CC is the last step → APPROVED', booking(fcw.bookingId).status === STATUS.APPROVED);
   await expectFail('Student records equipment', call('recordEquipment', { bookingId: fcw.bookingId, action: 'issue' }, 'demo-ad'));
   await expectFail('Return before issue', call('recordEquipment', { bookingId: fcw.bookingId, action: 'return' }, 'demo-staff'), /issued first/i);
   await expectOk('Staff mark equipment issued', call('recordEquipment', { bookingId: fcw.bookingId, action: 'issue' }, 'demo-staff'));
@@ -332,7 +362,7 @@ try {
   }
   const doubles = Object.values(perHour).filter((n) => n > 1).length;
   check(`no hour is double-booked (doubles: ${doubles})`, doubles === 0);
-  check('no signature images stored', !Object.keys(JSON.parse(localStorage.getItem('fc-demo-files-v13') || '{}')).length);
+  check('no signature images stored', !Object.keys(JSON.parse(localStorage.getItem('fc-demo-files-v14') || '{}')).length);
 } catch (e) {
   bad('test run crashed', e.stack || e.message);
 } finally {

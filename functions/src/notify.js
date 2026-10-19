@@ -85,9 +85,7 @@ export function approvedEmail(b, trigger = 'booking.approved') {
       heading: 'Your booking is approved',
       intro: [
         'Your Photography Lab booking is approved. Please carry your NIFT ID card and follow the lab rules.',
-        ...(b.isSpecial
-          ? [ADMIN_GUARD_NOTE]
-          : ['No printing is needed — your booking is approved in the system. You may optionally print the booking slip from the portal.']),
+        'No printing is needed. The institute admin has been informed. Show your Booking ID and NIFT ID card at the lab.',
       ],
       rows: bookingRows(b),
       extraRows: [...fcRows(b), ...facultyRows(b), ...peopleRows(b)],
@@ -151,6 +149,24 @@ export function adminCancelledNoticeEmail(b, to, byLabel, reason) {
         ['Student phone', b.phone],
         ...peopleRows(b),
       ],
+      action: bookingLink(b),
+    },
+  };
+}
+
+/** To the student when one step approves and the booking moves on. */
+export function stepApprovedEmail(b, byLabel, nextLabel) {
+  return {
+    type: 'step_approved',
+    to: b.email,
+    subject: `${byLabel} approved – FC Photography Lab booking ${b.id}`,
+    bookingId: b.id,
+    trigger: 'booking.step',
+    content: {
+      heading: `${byLabel} approved your booking`,
+      intro: [`Your booking is now with the ${nextLabel}. It is confirmed only after the last approval — you will get an email.`],
+      rows: bookingRows(b),
+      extraRows: [...peopleRows(b)],
       action: bookingLink(b),
     },
   };

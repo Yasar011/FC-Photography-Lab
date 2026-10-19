@@ -587,3 +587,14 @@ button.allday-chip { cursor: pointer; }
 .usage-list li:last-child { border-bottom: 0; }
 .usage-list li.late a b { color: var(--red); }
 .appr-tag.danger { background: #fde7e7; color: #b3261e; }
+
+/* Approval chain tracker */
+.chain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.chain-step { display: flex; gap: 10px; align-items: flex-start; }
+.chain-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-2); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
+.chain-step.done .chain-dot { background: #188038; border-color: #188038; }
+.chain-step.now .chain-dot { border-color: #e37400; box-shadow: 0 0 0 3px #fde7c7; }
+.chain-step.ended .chain-dot { background: #b3261e; border-color: #b3261e; }
+.chain-step.next .chain-label { color: var(--muted); }
+.chain-label { font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chain-now { font-size: 11px; font-weight: 700; color: #a85400; background: #fff1e0; border-radius: 10px; padding: 1px 8px; }

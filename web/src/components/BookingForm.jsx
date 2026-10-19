@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { useAuth } from '../lib/auth.jsx';
 import { call } from '../firebase.js';
-import { DEPARTMENTS, STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE } from '@shared/constants.js';
+import { DEPARTMENTS, STATUS, STUDENT_TYPES, specialStepsFor, ADMIN_GUARD_NOTE, approvalChain } from '@shared/constants.js';
 import { formatDate, formatHour, formatRange, BOOKABLE_STATES, SLOT_LABELS, SLOT, submissionProblem, slotStartMs } from '@shared/calendar.js';
 import { sortedEntries, maxHoursFor, DEFAULT_DECLARATION, DEFAULT_QUESTIONS, DEFAULT_EQUIPMENT } from '@shared/defaults.js';
 
@@ -104,7 +104,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
       const item = equipmentConfig?.[id];
       if (item?.requiresReason && (form.equipmentReasons[id] || '').trim().length < 3) return item.reasonLabel || `Please explain why you need ${item.name}.`;
     }
-    if (requiresSpecial) {
+    {
       for (const [i, p] of people.entries()) {
         if (p.name.trim().length < 3) return `Person ${i + 1}: please enter the full name.`;
         if (!p.department.trim()) return `Person ${i + 1}: please choose the department.`;
@@ -113,7 +113,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
       }
     }
     for (const q of questions) {
-      if (requiresSpecial && q.id === 'q_team') continue; // = number of people listed
+      if (q.id === 'q_team') continue; // = number of people listed
       const v = form.answers[q.id];
       if (q.required && (v === undefined || v === '' || v === false)) return `Please answer: ${q.label}`;
     }
@@ -143,10 +143,8 @@ export default function BookingForm({ student, staffMode, selection, onSelection
         purpose: form.purpose.trim(),
         equipment: form.equipment,
         equipmentReasons: form.equipmentReasons,
-        answers: requiresSpecial ? { ...form.answers, q_team: people.length } : form.answers,
-        participants: requiresSpecial
-          ? people.map((p) => ({ name: p.name.trim(), department: p.department.trim(), hostel: p.hostel.trim(), room: p.room.trim() }))
-          : undefined,
+        answers: { ...form.answers, q_team: people.length },
+        participants: people.map((p) => ({ name: p.name.trim(), department: p.department.trim(), hostel: p.hostel.trim(), room: p.room.trim() })),
         facultyName: form.facultyName.trim(),
         facultyEmail: form.facultyEmail.trim(),
         fcStudentNiftId: needsFc ? fcStudent?.niftId : undefined,
@@ -175,7 +173,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   }
 
   // Nothing is confirmed without the FC-CC.
-  const submitLabel = needsFc ? 'Submit for FC student approval' : requiresSpecial ? 'Submit for special approval' : 'Send to FC-CC for approval';
+  const submitLabel = needsFc ? 'Submit for FC student approval' : 'Send to FC-CC for approval';
   const hasPeople = firstYear || needsFc;
   let n = 0;
 
@@ -234,7 +232,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
         {!slotError && timeProblem && timeProblem !== error && <Alert kind="error">{timeProblem}</Alert>}
         {requiresSpecial && !slotError && (
           <Alert kind="warn">
-            <span><b>{rules.specialHoursMessage}</b> After you submit: FC Lab Assistant prints the form → {specialStepsFor(student.studentType).filter((x) => x.paper).map((x) => x.label).join(' → ')} → FC-CC approves & signs → give the form to the Admin Guard.</span>
+            <span><b>{rules.specialHoursMessage}</b> Approvals: {approvalChain({ studentType: student.studentType, department: student.department, isSpecial: true, requiresFcApproval: needsFc }).map((x) => x.label).join(' → ')} → institute admin informed. No printing.</span>
           </Alert>
         )}
         {firstYear && <Alert kind="warn">{rules.firstYearMessage}</Alert>}
@@ -267,17 +265,17 @@ export default function BookingForm({ student, staffMode, selection, onSelection
           {isOther && rules.otherDeptNoticeEnabled && (
             <p className="red-note">{rules.otherDeptNotice}</p>
           )}
-          {questions.filter((q) => !(requiresSpecial && q.id === 'q_team')).map((q) => (
+          {questions.filter((q) => q.id !== 'q_team').map((q) => (
             <QuestionInput key={q.id} q={q} value={form.answers[q.id]} onChange={(v) => set('answers', { ...form.answers, [q.id]: v })} />
           ))}
         </div>
       </section>
 
-      {requiresSpecial && (
+      {(
         <section>
           <div className="section-title"><span className="n">{++n}</span> People using the lab</div>
           <div className="stack">
-            <p className="small muted">Special permission needs everyone's details. The list goes on the printed form and to the institute admin when the FC-CC approves.</p>
+            <p className="small muted">Everyone's name, department, hostel number and room number. The list goes to the institute admin when the booking is approved.</p>
             <Field label="How many people will use the lab (including you)?" required>
               <input className="input" type="number" min={1} max={maxPeople} value={people.length} onChange={(e) => setPeopleCount(e.target.value)} style={{ maxWidth: 120 }} />
             </Field>
@@ -290,7 +288,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
                     <option value="">Department</option>
                     {[...DEPARTMENTS, 'Other / External'].map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
-                  <input className="input" placeholder="Hostel (or Day scholar)" value={p.hostel} onChange={(e) => setPerson(i, 'hostel', e.target.value)} maxLength={80} aria-label={`Person ${i + 1} hostel`} />
+                  <input className="input" placeholder="Hostel no. (or Day scholar)" value={p.hostel} onChange={(e) => setPerson(i, 'hostel', e.target.value)} maxLength={80} aria-label={`Person ${i + 1} hostel`} />
                   <input className="input" placeholder="Room no." value={p.room} onChange={(e) => setPerson(i, 'room', e.target.value)} maxLength={20} aria-label={`Person ${i + 1} room`} />
                 </div>
               ))}

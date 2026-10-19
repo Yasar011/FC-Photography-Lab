@@ -104,11 +104,31 @@ async function seed() {
   const fcccReject = (r, remarks) => call('adminBookingDecision', { bookingId: r.bookingId, decision: 'reject', remarks }, 'demo-fccc');
   const fcAnswer = (r, uid, decision = 'approve', reason) =>
     call('respondFcApproval', { approvalId: store.getRaw(`bookings/${r.bookingId}/fcApprovalId`), decision, reason }, uid);
-  const printForm = (r) =>
-    call('specialApprovalStep', { bookingId: r.bookingId, step: 'fcAssistant', decision: 'approve', remarks: 'Form printed and handed to the student' }, 'demo-staff');
-  const finalApprove = (r) =>
-    call('specialApprovalStep', { bookingId: r.bookingId, step: 'final', decision: 'approve', remarks: 'Director signed the paper form — approved' }, 'demo-fccc');
-  const finalReject = (r, remarks) => call('specialApprovalStep', { bookingId: r.bookingId, step: 'final', decision: 'reject', remarks }, 'demo-fccc');
+  // Dept CC / Director decide from a one-click email (the Google Sheet does this in
+  // real life; the demo has no Sheet, so the same database changes are made here).
+  const emailDecision = (r, step, decision, remarks = 'Checked and fine') => {
+    const id = r.bookingId;
+    const bk = store.getRaw(`bookings/${id}`);
+    const now = Date.now();
+    const label = step === 'director' ? 'Director' : `${bk.department} CC`;
+    const next = decision === 'approve' ? (step === 'director' ? STATUS.APPROVED : STATUS.PENDING_FCCC_APPROVAL) : STATUS.REJECTED;
+    store.update(`bookings/${id}`, {
+      status: next,
+      [step === 'director' ? 'directorApproval' : 'deptCcApproval']: {
+        decision, byName: label, byEmail: step === 'director' ? 'director@nift.ac.in' : `${bk.department.toLowerCase()}.cc@nift.ac.in`, at: now, remarks,
+        ...(decision === 'approve' ? { signature: { digital: true, name: label, role: label, at: now, code: `FPL-NJ-${(now % 0xffffffff).toString(16).toUpperCase().padStart(8, '0')}` } } : {}),
+      },
+      ...(decision === 'reject' ? { rejection: { byName: label, role: step, at: now, reason: `${label}: ${remarks}` } } : {}),
+    });
+    store.set(`bookings/${id}/history/zz${now}${step}`, {
+      at: now, status: next, by: label, uid: `email:${step}`, role: step, note: remarks,
+      event: decision === 'approve' ? (step === 'director' ? 'APPROVED BY THE DIRECTOR — BOOKING CONFIRMED' : `${label.toUpperCase()} APPROVED — SENT TO FC-CC`) : `REJECTED BY THE ${label.toUpperCase()}`,
+    });
+    for (let h = bk.startHour; h < bk.endHour; h++) {
+      const k = `bookingSlots/${bk.date}/${slotKey(h)}`;
+      if (decision === 'approve') store.update(k, { status: next }); else store.set(k, null);
+    }
+  };
 
   // =========== NORMAL BOOKINGS (weekday 5–10 PM) ===========
   const n1 = await create('demo-fc', 'Aarav Mehta', W1, 17, 21, 'Portfolio shoot — product still life', ['photoLab', 'camera', 'lights', 'rgbLight'], { project: 'Fashion Photography' });
@@ -143,8 +163,9 @@ async function seed() {
 
   const o2 = await create('demo-mfm', 'Arjun Mehra', W2, 15, 17, 'Product shoot for MFM brand project', ['photoLab', 'lights', 'trigger'], { fcStudentNiftId: 'FC/24/022', project: 'Brand launch' });
   await fcAnswer(o2, 'demo-fc2');
-  note('Other departments', 'FC student approved → waiting for FC-CC (CLS slot opened by staff)',
-    '3–5 PM is normally CLS class time, but staff opened it on this day. Neha (FC) approved; the FC-CC must still approve.', o2.bookingId, 'demo-fccc');
+  emailDecision(o2, 'deptCc', 'approve', 'MFM brand project — approved');
+  note('Other departments', 'FC student → MFM CC approved → waiting for FC-CC (CLS slot opened by staff)',
+    '3–5 PM is normally CLS class time, but staff opened it on this day. Neha (FC student) and the MFM CC (by email) approved; the FC-CC must still approve.', o2.bookingId, 'demo-fccc');
 
   const o3 = await create('demo-ad', 'Rohan Gupta', W2, 21, 22, 'Accessory catalogue shoot', ['photoLab', 'lights'], { fcStudentNiftId: 'FC/24/022', project: 'AD catalogue' });
   await fcAnswer(o3, 'demo-fc2', 'reject', 'I am not part of this shoot.');
@@ -152,13 +173,19 @@ async function seed() {
 
   const o4 = await create('demo-other', 'Riya Sharma', W3, 18, 20, 'Green-screen test for fashion film', ['photoLab', 'greenRoom'], { ...FACULTY2, fcStudentNiftId: 'FC/24/022', project: 'Fashion film' });
   await fcAnswer(o4, 'demo-fc2');
+  emailDecision(o4, 'deptCc', 'approve', 'Fine for the fashion film');
   await fcccApprove(o4);
-  note('Other departments', 'FC student approved → FC-CC APPROVED', 'The full other-department path, finished.', o4.bookingId, 'demo-other');
+  note('Other departments', 'FC student → BFT CC → FC-CC → APPROVED', 'The full other-department path, finished. admin.jodhpur is informed with everyone’s hostel and room.', o4.bookingId, 'demo-other');
 
   const o5 = await create('demo-ad', 'Rohan Gupta', W4, 19, 21, 'Ad film storyboard shoot', ['photoLab', 'lights', 'rgbLight'], { fcStudentNiftId: 'FC/23/014', project: 'AD film' });
   await fcAnswer(o5, 'demo-fc');
+  emailDecision(o5, 'deptCc', 'approve', 'OK from AD');
   await fcccReject(o5, 'Lab reserved for jury preparation that evening. Please choose another day.');
-  note('Other departments', 'FC student approved → FC-CC REJECTED', 'Even after the FC student approves, the FC-CC has the final word. The reason is shown to the student.', o5.bookingId, 'demo-ad');
+  const o6 = await create('demo-mfm', 'Arjun Mehra', W2, 21, 22, 'Packaging shoot', ['photoLab', 'lights'], { fcStudentNiftId: 'FC/24/022', project: 'Packaging' });
+  await fcAnswer(o6, 'demo-fc2');
+  note('Other departments', 'FC student approved → waiting for the MFM CC (one-click email)',
+    'The MFM CC got an email with Approve / Reject buttons (remarks required). FC staff can re-send it from Approvals → With Dept CC / Director.', o6.bookingId, 'demo-staff');
+  note('Other departments', 'FC student → AD CC → FC-CC REJECTED', 'Even after the FC student approves, the FC-CC has the final word. The reason is shown to the student.', o5.bookingId, 'demo-ad');
 
   // =========== FIRST-YEAR (must book with a senior) ===========
   const f1 = await create('demo-first', 'Kabir Singh', W3, 17, 18, 'First studio practice with senior', ['photoLab', 'lights'], { seniorNiftId: 'FC/23/014', project: 'Basic Photography' });
@@ -185,46 +212,48 @@ async function seed() {
 
   // =========== SPECIAL (after 10 PM · weekend · holiday) ===========
   const s1 = await create('demo-fc2', 'Neha Verma', W1, 23, 24, 'Night sky product shoot', ['photoLab', 'lights', 'trigger'], { project: 'Night photography' });
-  note('Special approval', 'After 10 PM → FC Lab Assistant must print the form',
-    'Step 1: the FC Lab Assistant prints the form and hands it to the student (Approvals → "Special: print & issue form").', s1.bookingId, 'demo-staff');
+  note('Special approval', 'After 10 PM · FC student → waiting for the FC-CC',
+    'No printing any more. FC students go straight to the FC-CC; special bookings then need the Director (by email).', s1.bookingId, 'demo-fccc');
 
   const s2 = await create('demo-fc', 'Aarav Mehta', weekend, 11, 14, 'Lookbook shoot with external models', ['photoLab', 'camera', 'lights', 'clsRoom'], {
     equipmentReasons: { clsRoom: 'Needed as a styling and changing room for the models' }, project: 'Graduation lookbook', team: 6,
   });
-  await printForm(s2);
-  note('Special approval', 'Weekend · FC student · form is with the student',
-    "Form printed. The student takes it to the Director's PA → Director signs → FC-CC approves & signs in the portal.", s2.bookingId, 'demo-fc');
+  await fcccApprove(s2);
+  note('Special approval', 'Weekend · FC-CC approved → waiting for the Director',
+    'The Director got a one-click email (Approve / Reject, remarks required).', s2.bookingId, 'demo-fc');
 
   const s3 = await create('demo-fc2', 'Neha Verma', weekend, 9, 11, 'Morning natural-light portraits', ['photoLab', 'lights'], { project: 'Portraiture' });
-  await printForm(s3);
-  await finalApprove(s3);
-  note('Special approval', 'Weekend · FULLY APPROVED → give form to Admin Guard',
-    'Director signed on paper, FC-CC approved and signed digitally. Open "Print form" to see all signatures and the bold Admin Guard line.', s3.bookingId, 'demo-fc2');
+  await fcccApprove(s3);
+  emailDecision(s3, 'director', 'approve', 'Approved for the weekend');
+  note('Special approval', 'Weekend · FC-CC → Director → APPROVED',
+    'Fully approved. admin.jodhpur got the email with everyone’s name, department, hostel and room. Stamps: Student, FC-CC, Director.', s3.bookingId, 'demo-fc2');
 
   const s4 = await create('demo-other', 'Riya Sharma', weekend, 15, 17, 'Weekend product shoot for BFT project', ['photoLab', 'lights'], { fcStudentNiftId: 'FC/23/014', project: 'BFT product' });
   await fcAnswer(s4, 'demo-fc');
-  note('Special approval', 'Weekend · other department · FC student approved → form to print',
-    "Other-department route: FC Lab Assistant prints → Dept CC / subject faculty signs → Director's PA → Director → FC-CC.", s4.bookingId, 'demo-staff');
+  note('Special approval', 'Weekend · other department · FC student approved → waiting for the BFT CC',
+    'Other-department specials: FC student → Dept CC → FC-CC → Director → admin.', s4.bookingId, 'demo-staff');
 
   const s5 = await create('demo-fd', 'Sneha Joshi', W3, 22, 24, 'Late-night garment shoot for FD jury', ['photoLab', 'lights', 'rgbLight'], { fcStudentNiftId: 'FC/23/031', project: 'FD jury' });
   await fcAnswer(s5, 'demo-fc3');
-  await printForm(s5);
-  note('Special approval', 'After 10 PM · FD student · form issued (needs FD CC signature)',
-    "Sneha has the paper form: FD CC / subject faculty → Director's PA → Director → FC-CC.", s5.bookingId, 'demo-fd');
+  emailDecision(s5, 'deptCc', 'approve', 'Needed for the FD jury');
+  await fcccApprove(s5);
+  note('Special approval', 'After 10 PM · FD student · FC student → FD CC → FC-CC → waiting for the Director',
+    'Only the Director is left.', s5.bookingId, 'demo-fd');
 
   const s6 = await create('demo-mfm', 'Arjun Mehra', weekend, 17, 20, 'Weekend campaign shoot', ['photoLab', 'lights', 'greenRoom'], { fcStudentNiftId: 'FC/24/022', project: 'Campaign' });
   await fcAnswer(s6, 'demo-fc2');
-  await printForm(s6);
-  await finalReject(s6, 'Department CC signature missing on the paper form.');
-  note('Special approval', 'Special · REJECTED by FC-CC', 'The paper form came back without the department CC signature, so the FC-CC rejected it.', s6.bookingId, 'demo-mfm');
+  emailDecision(s6, 'deptCc', 'approve', 'OK');
+  await fcccApprove(s6);
+  emailDecision(s6, 'director', 'reject', 'No weekend access for this project.');
+  note('Special approval', 'Special · REJECTED by the Director', 'The Director rejected it from the email (with remarks); the slot was freed and the student told.', s6.bookingId, 'demo-mfm');
 
   const s7 = await create('demo-fd', 'Sneha Joshi', weekend, 20, 22, 'Evening styling shoot', ['photoLab', 'lights'], { fcStudentNiftId: 'FC/24/022', project: 'Styling' });
-  note('Special approval', 'Special · waiting for the FC student first', "Other-department specials still start with the FC student's approval (Neha).", s7.bookingId, 'demo-fc2');
+  note('Special approval', 'Special · waiting for the FC student first', "Other-department specials start with the FC student's approval (Neha).", s7.bookingId, 'demo-fc2');
 
   const s8 = await create('demo-fc', 'Aarav Mehta', W4, 22, 24, 'Long-exposure light painting', ['photoLab', 'camera', 'rgbLight'], { project: 'Experimental' });
-  await printForm(s8);
-  await finalApprove(s8);
-  note('Special approval', 'After 10 PM · FC student · APPROVED', 'Signatures on the form: Student (digital), Director (paper), FC-CC (digital).', s8.bookingId, 'demo-fc');
+  await fcccApprove(s8);
+  emailDecision(s8, 'director', 'approve', 'Approved');
+  note('Special approval', 'After 10 PM · FC student · APPROVED', 'Stamps: Student, FC-CC and Director — each with a QR code to verify.', s8.bookingId, 'demo-fc');
 
   // =========== PAST (completed / expired) ===========
   // Made through the real flow on a free future slot, then moved into the past.
@@ -268,6 +297,7 @@ async function seed() {
 
   p = await create('demo-other', 'Riya Sharma', W4, 19, 21, 'Fabric drape study', ['photoLab', 'lights'], { fcStudentNiftId: 'FC/24/022', project: 'Draping' });
   await fcAnswer(p, 'demo-fc2');
+  emailDecision(p, 'deptCc', 'approve');
   await fcccApprove(p);
   note('Past bookings', 'Other department · COMPLETED (5 days ago)', 'A finished other-department booking with FC student and FC-CC approval.', toPast(p, 5, 18, 20, STATUS.COMPLETED), 'demo-other');
 

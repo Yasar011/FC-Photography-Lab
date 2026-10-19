@@ -162,6 +162,16 @@ function RulesEditor() {
               <input className="input" type="number" min={1} max={100} value={r.maxParticipants ?? 30} onChange={num('maxParticipants')} />
             </Field>
           </div>
+          <div className="section-title" style={{ marginTop: 18 }}>One-click approvers (they approve from an email)</div>
+          <div className="grid grid-3">
+            <Field label="Director's email" help="Special bookings: after the FC-CC"><input className="input" type="email" value={r.directorEmail || ''} onChange={(e) => set('directorEmail', e.target.value)} placeholder="director@nift.ac.in" /></Field>
+            {['AD', 'BFT', 'TD', 'FD', 'MFM'].map((d) => (
+              <Field key={d} label={`${d} CC email`} help="Other-department bookings: after the FC student">
+                <input className="input" type="email" value={r.deptCcEmails?.[d] || ''} onChange={(e) => set('deptCcEmails', { ...(r.deptCcEmails || {}), [d]: e.target.value })} placeholder={`${d.toLowerCase()}.cc@nift.ac.in`} />
+              </Field>
+            ))}
+          </div>
+          <p className="tiny muted">Empty → the approval email goes to the Main Admin, who can forward it.</p>
           <div className="section-title" style={{ marginTop: 18 }}>When students can book (24-hour clock, IST)</div>
           <div className="grid grid-4">
             <Field label="Regular: from"><input className="input" type="number" min={0} max={23} value={r.regularBookingOpenHour ?? 9} onChange={num('regularBookingOpenHour')} /></Field>
