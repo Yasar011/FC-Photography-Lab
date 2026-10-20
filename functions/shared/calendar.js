@@ -324,14 +324,18 @@ const hourLabel = (h) => formatHour(Math.floor(h));
  * (after 10 PM / weekend / holiday) only in the morning and well ahead, so the
  * paper form can reach the Director. Returns a message, or '' when allowed.
  */
-export function submissionProblem({ rules, nowMs = Date.now(), isSpecial, startAt }) {
+export function submissionProblem({ rules, nowMs = Date.now(), isSpecial, startAt, date }) {
   const p = istParts(nowMs);
   const h = p.hour + p.minute / 60;
+  // Booking hours only matter for bookings soon (today / tomorrow by default).
+  const within = Number(rules.bookingHoursWithinDays ?? 1);
+  const soon = !date || diffDays(p.date, date) <= within;
+  const soonLabel = within === 0 ? 'today' : within === 1 ? 'today or tomorrow' : `the next ${within} days`;
   if (isSpecial) {
     const open = Number(rules.specialBookingOpenHour ?? 9);
     const close = Number(rules.specialBookingCloseHour ?? 14);
-    if (h < open || h >= close) {
-      return `Special bookings (after 10 PM, weekend or holiday) can only be requested between ${hourLabel(open)} and ${hourLabel(close)}.`;
+    if (soon && (h < open || h >= close)) {
+      return `Special bookings (after 10 PM, weekend or holiday) for ${soonLabel} can only be requested between ${hourLabel(open)} and ${hourLabel(close)}. Further ahead you can request any time.`;
     }
     const notice = Number(rules.specialMinNoticeHours ?? 24);
     if (startAt && startAt - nowMs < notice * 3600000) {
@@ -341,6 +345,8 @@ export function submissionProblem({ rules, nowMs = Date.now(), isSpecial, startA
   }
   const open = Number(rules.regularBookingOpenHour ?? 9);
   const close = Number(rules.regularBookingCloseHour ?? 16);
-  if (h < open || h >= close) return `Bookings can only be made between ${hourLabel(open)} and ${hourLabel(close)}.`;
+  if (soon && (h < open || h >= close)) {
+    return `Bookings for ${soonLabel} can only be made between ${hourLabel(open)} and ${hourLabel(close)}. Bookings further ahead can be made any time.`;
+  }
   return '';
 }

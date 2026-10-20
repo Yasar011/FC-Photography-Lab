@@ -36,6 +36,8 @@ const SAME_DECISIONS = and(
 const ME = "root.child('users/' + auth.uid)";
 const R = (key) => `root.child('settings/bookingRules/${key}')`;
 const IST_HOUR = '(((now + 19800000) % 86400000) / 3600000)';
+// Booking starts after the end of (today + N days) in IST → the booking hours don't apply.
+const FAR_AHEAD = `(${R('bookingHoursWithinDays')}.exists() && newData.child('startAt').val() >= now - ((now + 19800000) % 86400000) + (${R('bookingHoursWithinDays')}.val() + 1) * 86400000)`;
 const BOOKING_CREATE = and(
   '!data.exists()',
   "newData.child('id').val() === $bookingId",
@@ -56,8 +58,8 @@ const BOOKING_CREATE = and(
   // after 10 PM is always special
   "(newData.child('endHour').val() <= 22 || newData.child('isSpecial').val() === true)",
   // when students may book (IST): regular 9 AM–4 PM; special 9 AM–2 PM and ≥ 24 h ahead
-  `(newData.child('isSpecial').val() === true || !${R('regularBookingOpenHour')}.exists() || !${R('regularBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('regularBookingOpenHour')}.val() && ${IST_HOUR} < ${R('regularBookingCloseHour')}.val()))`,
-  `(newData.child('isSpecial').val() !== true || ((!${R('specialBookingOpenHour')}.exists() || !${R('specialBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('specialBookingOpenHour')}.val() && ${IST_HOUR} < ${R('specialBookingCloseHour')}.val())) && (!${R('specialMinNoticeHours')}.exists() || newData.child('startAt').val() - now >= ${R('specialMinNoticeHours')}.val() * 3600000)))`,
+  `(newData.child('isSpecial').val() === true || ${FAR_AHEAD} || !${R('regularBookingOpenHour')}.exists() || !${R('regularBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('regularBookingOpenHour')}.val() && ${IST_HOUR} < ${R('regularBookingCloseHour')}.val()))`,
+  `(newData.child('isSpecial').val() !== true || ((${FAR_AHEAD} || !${R('specialBookingOpenHour')}.exists() || !${R('specialBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('specialBookingOpenHour')}.val() && ${IST_HOUR} < ${R('specialBookingCloseHour')}.val())) && (!${R('specialMinNoticeHours')}.exists() || newData.child('startAt').val() - now >= ${R('specialMinNoticeHours')}.val() * 3600000)))`,
   // sane times: in the future, within the booking window, 1–6 hours
   "newData.child('startAt').val() > now",
   "newData.child('startAt').val() < now + 8 * 86400000",

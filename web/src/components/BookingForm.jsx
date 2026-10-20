@@ -40,7 +40,7 @@ export default function BookingForm({ student, staffMode, selection, onSelection
   const requiresSpecial = range.some((s) => s.requiresSpecial);
   const usesOverride = range.some((s) => s.override);
   // Regular bookings 9 AM–4 PM; special requests 9 AM–2 PM and 24 h ahead (staff exempt).
-  const timeProblem = staffMode ? '' : submissionProblem({ rules, nowMs: Date.now(), isSpecial: requiresSpecial, startAt: slotStartMs(date, start) });
+  const timeProblem = staffMode ? '' : submissionProblem({ rules, nowMs: Date.now(), isSpecial: requiresSpecial, startAt: slotStartMs(date, start), date });
 
   // Other-department students aren't offered items like the FC camera.
   const equipment = sortedEntries(Object.keys(equipmentConfig || {}).length ? equipmentConfig : DEFAULT_EQUIPMENT)

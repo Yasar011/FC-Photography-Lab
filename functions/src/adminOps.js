@@ -369,6 +369,7 @@ const SETTINGS_VALIDATORS = {
       specialBookingOpenHour: intIn(v.specialBookingOpenHour ?? 9, 0, 23, 'Special requests open at'),
       specialBookingCloseHour: intIn(v.specialBookingCloseHour ?? 14, 1, 24, 'Special requests close at'),
       specialMinNoticeHours: intIn(v.specialMinNoticeHours ?? 24, 0, 168, 'Special booking notice (hours)'),
+      bookingHoursWithinDays: intIn(v.bookingHoursWithinDays ?? 1, 0, 7, 'Booking hours apply for the next … days'),
       weeklyMaxBookings: intIn(v.weeklyMaxBookings ?? 3, 0, 50, 'Bookings per week'),
       weeklyMaxHours: intIn(v.weeklyMaxHours ?? 10, 0, 100, 'Hours per week'),
       directorEmail: (() => {

@@ -64,6 +64,9 @@ export const DEFAULT_BOOKING_RULES = {
   specialBookingOpenHour: 9,
   specialBookingCloseHour: 14,
   specialMinNoticeHours: 24,
+  // The booking hours above apply only to bookings for today … +N days
+  // (1 = today and tomorrow). Further ahead: book any time.
+  bookingHoursWithinDays: 1,
 
   // Fair use per student (0 = no limit). Per day = the max duration (FC 4 h, others 3 h).
   weeklyMaxBookings: 3,

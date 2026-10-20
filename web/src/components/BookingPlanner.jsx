@@ -212,7 +212,7 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
         <p className="small muted" style={{ margin: '-6px 0 10px' }}>
           {staffMode
             ? `Booking for ${student.name} · up to ${rules.staffBookingWindowDays} days ahead · max ${maxH} h`
-            : `Click a free slot (or drag to select up to ${maxH} hours). Book between ${formatHour(rules.regularBookingOpenHour ?? 9)} and ${formatHour(rules.regularBookingCloseHour ?? 16)}; special (after 10 PM / weekend / holiday) between ${formatHour(rules.specialBookingOpenHour ?? 9)} and ${formatHour(rules.specialBookingCloseHour ?? 14)}, ${rules.specialMinNoticeHours ?? 24} h ahead.`}
+            : `Click a free slot (or drag to select up to ${maxH} hours). For today or tomorrow, book between ${formatHour(rules.regularBookingOpenHour ?? 9)} and ${formatHour(rules.regularBookingCloseHour ?? 16)} (special: ${formatHour(rules.specialBookingOpenHour ?? 9)}–${formatHour(rules.specialBookingCloseHour ?? 14)}); further ahead, any time. Special bookings: ${rules.specialMinNoticeHours ?? 24} h ahead.`}
         </p>
         <TimeGrid
           dates={dates}

@@ -158,7 +158,7 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
 
   // When students may book, and fair-use limits (staff bookings are exempt).
   if (!staffBooking) {
-    const late = submissionProblem({ rules, nowMs: Date.now(), isSpecial, startAt: slotStartMs(date, startHour) });
+    const late = submissionProblem({ rules, nowMs: Date.now(), isSpecial, startAt: slotStartMs(date, startHour), date });
     if (late) fail('failed-precondition', late);
     await checkUsageLimits({ studentUid, date, hours: endHour - startHour, rules, studentType: student.studentType });
   }

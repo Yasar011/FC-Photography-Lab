@@ -180,6 +180,9 @@ function RulesEditor() {
             <Field label="Special: until"><input className="input" type="number" min={1} max={24} value={r.specialBookingCloseHour ?? 14} onChange={num('specialBookingCloseHour')} /></Field>
           </div>
           <div className="grid grid-4" style={{ marginTop: 12 }}>
+            <Field label="Hours apply for the next … days" help="1 = today and tomorrow. Further ahead: book any time.">
+              <input className="input" type="number" min={0} max={7} value={r.bookingHoursWithinDays ?? 1} onChange={num('bookingHoursWithinDays')} />
+            </Field>
             <Field label="Special: hours ahead" help="e.g. 24 = book at least a day before"><input className="input" type="number" min={0} max={168} value={r.specialMinNoticeHours ?? 24} onChange={num('specialMinNoticeHours')} /></Field>
             <Field label="Bookings per week" help="Per student, Mon–Sun (0 = no limit)"><input className="input" type="number" min={0} max={50} value={r.weeklyMaxBookings ?? 3} onChange={num('weeklyMaxBookings')} /></Field>
             <Field label="Hours per week" help="Per student (0 = no limit)"><input className="input" type="number" min={0} max={100} value={r.weeklyMaxHours ?? 10} onChange={num('weeklyMaxHours')} /></Field>

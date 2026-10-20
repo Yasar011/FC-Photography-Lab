@@ -303,10 +303,14 @@ try {
   // ---- 11. Booking hours and fair-use limits ----
   console.log('\n11. Booking hours · per-day and per-week limits');
   await call('removeHoliday', { date: DH }, 'demo-staff'); // the test holiday from section 8
-  store.update('settings/bookingRules', { regularBookingOpenHour: 0, regularBookingCloseHour: 0 });
+  store.update('settings/bookingRules', { regularBookingOpenHour: 0, regularBookingCloseHour: 0, bookingHoursWithinDays: 7 });
   await expectFail('Regular booking outside booking hours', call('createBooking', base(DH, 17, 18), 'demo-fc2'), /can only be made between/);
   await expectOk('Staff can still book for a student outside booking hours', call('createBooking', base(DH, 17, 18, { onBehalfOfNiftId: 'FC/24/022' }), 'demo-staff').then(async (r) => { await call('cancelBooking', { bookingId: r.bookingId, reason: 'test' }, 'demo-fccc'); return r; }));
-  store.update('settings/bookingRules', { ...RELAX, specialBookingOpenHour: 0, specialBookingCloseHour: 0 });
+  // Booking hours only for today / tomorrow: closed hours, but a booking 2+ days ahead is fine.
+  store.update('settings/bookingRules', { ...RELAX, regularBookingOpenHour: 0, regularBookingCloseHour: 0, specialBookingOpenHour: 0, specialBookingCloseHour: 0, bookingHoursWithinDays: 1 });
+  await expectFail('Booking for TOMORROW outside booking hours', call('createBooking', base(cal.addDays(today, 1), 22, 23), 'demo-fc3'), /today or tomorrow/);
+  await expectOk(`Booking ${cal.diffDays(today, DH)} days ahead outside booking hours → allowed`, call('createBooking', base(DH, 17, 18), 'demo-fc3').then(async (r) => { await call('cancelBooking', { bookingId: r.bookingId, reason: 'test' }, 'demo-fccc'); return r; }));
+  store.update('settings/bookingRules', { ...RELAX, specialBookingOpenHour: 0, specialBookingCloseHour: 0, bookingHoursWithinDays: 7 });
   await expectFail('Special request outside special hours', call('createBooking', base(WE, 21, 23), 'demo-fc2'), /Special bookings .* can only be requested between/);
   store.update('settings/bookingRules', { ...RELAX, specialMinNoticeHours: 400 });
   await expectFail('Special request too late (needs hours ahead)', call('createBooking', base(WE, 21, 23), 'demo-fc2'), /at least 400 hours before/);
