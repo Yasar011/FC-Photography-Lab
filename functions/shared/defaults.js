@@ -108,13 +108,7 @@ export const DEFAULT_QUESTIONS = {
     order: 1,
     defaultValue: 1,
   },
-  q_models: {
-    label: 'Other students / models attending (optional)',
-    type: 'textarea',
-    required: false,
-    enabled: true,
-    order: 2,
-  },
+  // Who attends is the "People using the lab" list on every booking.
 };
 
 export const DEFAULT_DECLARATION = {
