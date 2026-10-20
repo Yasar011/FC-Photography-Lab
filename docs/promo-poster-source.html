@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FC Photography Lab — Booking is now online</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=block" rel="stylesheet">
+<style>
+@page { size: A3 portrait; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: Poppins, sans-serif; }
+.poster { position: relative; width: 297mm; height: 420mm; overflow: hidden; color: #fff;
+  background:
+    radial-gradient(120% 70% at 50% 18%, #ff8a3d 0%, #f26a1b 45%, #d9520c 100%); }
+/* wall / floor, like a studio corner */
+.floor { position: absolute; left: 0; right: 0; bottom: 0; height: 36%;
+  background: linear-gradient(180deg, #e2600f 0%, #f07a2c 40%, #f58a3f 100%); }
+.floor::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: rgba(120, 40, 0, .25); }
+.corner-shade { position: absolute; inset: 0; background:
+    linear-gradient(90deg, rgba(110, 35, 0, .35) 0%, rgba(110, 35, 0, 0) 22%, rgba(110, 35, 0, 0) 78%, rgba(110, 35, 0, .28) 100%); }
+
+.top { position: absolute; top: 34mm; left: 0; right: 0; text-align: center; padding: 0 18mm; }
+.badge { width: 30mm; height: 30mm; border-radius: 50%; background: #fff; margin: 0 auto 10mm; display: grid; place-items: center; box-shadow: 0 6px 18px rgba(80, 25, 0, .25); }
+h1 { margin: 0; font-weight: 800; font-size: 25mm; line-height: .98; letter-spacing: -1.2mm; text-shadow: 0 3px 16px rgba(90, 30, 0, .25); }
+.sub { margin: 6mm auto 0; font-weight: 600; font-size: 7.4mm; line-height: 1.3; max-width: 230mm; }
+
+/* phone */
+.phone-wrap { position: absolute; left: 50%; top: 150mm; transform: translateX(-66%) rotate(-7deg); }
+.phone { width: 100mm; height: 180mm; border-radius: 16mm; background: #1b1b1d; padding: 3.2mm;
+  box-shadow: 0 0 0 1.4mm #3a3a3e inset, 6mm 10mm 14mm rgba(90, 28, 0, .45), 2mm 3mm 5mm rgba(90, 28, 0, .3); }
+.screen { width: 100%; height: 100%; border-radius: 14mm; background: #f5f6f8; overflow: hidden; position: relative; color: #141414; }
+.island { position: absolute; top: 3mm; left: 50%; transform: translateX(-50%); width: 30mm; height: 8mm; border-radius: 5mm; background: #000; }
+.app-top { padding: 13mm 6mm 3.5mm; background: #fff; }
+.app-brand { display: flex; align-items: center; gap: 2.4mm; font-weight: 700; font-size: 4.2mm; }
+.app-brand .logo { width: 7.4mm; height: 7.4mm; border-radius: 2mm; background: #141414; display: grid; place-items: center; }
+.app-title { margin-top: 4mm; font-weight: 800; font-size: 6.2mm; letter-spacing: -.2mm; }
+.days { display: flex; gap: 1.8mm; margin-top: 3.4mm; }
+.day { flex: 1; text-align: center; border-radius: 3mm; padding: 1.8mm 0; background: #f1f2f4; font-size: 2.6mm; font-weight: 600; color: #555; }
+.day b { display: block; font-size: 4.4mm; color: #141414; }
+.day.on { background: #1a5fb4; color: #dfe9fb; }
+.day.on b { color: #fff; }
+.slots { padding: 3mm 5mm; display: flex; flex-direction: column; gap: 1.8mm; }
+.slot { display: flex; align-items: center; gap: 3mm; background: #fff; border-radius: 3.2mm; padding: 2.2mm 3.4mm; box-shadow: 0 1px 2px rgba(0,0,0,.06); font-size: 3.1mm; }
+.slot .t { width: 15mm; font-weight: 700; color: #333; }
+.slot .s { flex: 1; color: #555; }
+.pill { font-size: 2.5mm; font-weight: 700; padding: .8mm 2.4mm; border-radius: 3mm; }
+.free { background: #e6f4ea; color: #188038; }
+.taken { background: #fde7e7; color: #b3261e; }
+.mine { background: #e8f0fe; color: #1a5fb4; }
+.class { background: #eceff1; color: #607080; }
+.slot.sel { outline: .6mm solid #1a5fb4; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 6mm 6mm 0 0; padding: 4.5mm 5.5mm 7mm; box-shadow: 0 -3mm 8mm rgba(0,0,0,.08); }
+.sheet .grab { width: 12mm; height: 1.2mm; border-radius: 1mm; background: #d5d7db; margin: 0 auto 3mm; }
+.sheet .when { font-weight: 700; font-size: 3.6mm; }
+.sheet .chain { font-size: 2.6mm; color: #666; margin-top: 1mm; }
+.sheet .btn { margin-top: 3.4mm; background: #1a5fb4; color: #fff; text-align: center; font-weight: 700; font-size: 3.4mm; border-radius: 3mm; padding: 3mm 0; }
+
+/* QR card */
+.qr-card { position: absolute; right: 24mm; top: 196mm; width: 88mm; background: #fff; color: #141414; border-radius: 9mm; padding: 7mm 7mm 6mm; text-align: center; box-shadow: 3mm 8mm 12mm rgba(90, 28, 0, .35); transform: rotate(3deg); }
+.qr-card .lbl { margin-top: 3mm; background: #141414; color: #fff; border-radius: 4mm; padding: 2.4mm 0; font-weight: 800; font-size: 6mm; letter-spacing: .6mm; }
+.qr-card .hint { margin-top: 2.6mm; font-size: 3.3mm; font-weight: 500; color: #555; line-height: 1.35; }
+
+.steps { position: absolute; left: 18mm; right: 18mm; bottom: 28mm; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6mm; }
+.step { background: rgba(110, 32, 0, .26); border: .4mm solid rgba(255, 255, 255, .3); border-radius: 6mm; padding: 5mm 6mm; }
+.step .n { font-weight: 800; font-size: 9mm; line-height: 1; }
+.step .h { font-weight: 700; font-size: 5.6mm; margin-top: 2mm; }
+.step .d { font-size: 3.8mm; margin-top: 1.4mm; line-height: 1.35; color: #ffffff; font-weight: 500; }
+.foot { position: absolute; left: 0; right: 0; bottom: 11mm; text-align: center; font-weight: 600; font-size: 4.4mm; letter-spacing: 1.4mm; text-transform: uppercase; color: #fff3e8; }
+</style>
+</head>
+<body>
+<div class="poster">
+  <div class="floor"></div>
+  <div class="corner-shade"></div>
+
+  <div class="top">
+    <div class="badge" aria-hidden="true">
+      <svg width="62" height="62" viewBox="0 0 24 24" fill="none" stroke="#e35d10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    </div>
+    <h1>Lab Booking<br>Is Now Online</h1>
+    <div class="sub">Book the FC Photography Lab from your phone. Approved online — no forms, no queues.</div>
+  </div>
+
+  <div class="phone-wrap">
+    <div class="phone"><div class="screen">
+      <div class="island"></div>
+      <div class="app-top">
+        <div class="app-brand"><span class="logo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg></span>FC Photography Lab</div>
+        <div class="app-title">Book a slot</div>
+        <div class="days">
+          <div class="day">Mon<b>26</b></div><div class="day on">Tue<b>27</b></div><div class="day">Wed<b>28</b></div><div class="day">Thu<b>29</b></div><div class="day">Fri<b>30</b></div>
+        </div>
+      </div>
+      <div class="slots">
+        <div class="slot"><span class="t">3 PM</span><span class="s">CLS class</span><span class="pill class">Class</span></div>
+        <div class="slot"><span class="t">5 PM</span><span class="s">Portfolio shoot</span><span class="pill taken">Booked</span></div>
+        <div class="slot sel"><span class="t">6 PM</span><span class="s">Your selection</span><span class="pill mine">Selected</span></div>
+        <div class="slot sel"><span class="t">7 PM</span><span class="s">Your selection</span><span class="pill mine">Selected</span></div>
+        <div class="slot"><span class="t">8 PM</span><span class="s">Available</span><span class="pill free">Free</span></div>
+              </div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="when">Tue 27 Oct · 6:00 – 8:00 PM</div>
+        <div class="chain">Digitally signed · goes to the FC-CC for approval</div>
+        <div class="btn">Send to FC-CC for approval</div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="qr-card">
+    <svg width="100%" viewBox="-2 -2 __N4__ __N4__" role="img" aria-label="QR code: scan to book the FC Photography Lab" shape-rendering="crispEdges"><rect x="-2" y="-2" width="__N4__" height="__N4__" fill="#ffffff"></rect><path d="__PATH__" fill="#141414"></path></svg>
+    <div class="lbl">SCAN TO BOOK</div>
+    <div class="hint">Sign in with your <b>@nift.ac.in</b> Google account</div>
+  </div>
+
+  <div class="steps">
+    <div class="step"><div class="n">1</div><div class="h">Scan &amp; sign in</div><div class="d">Use your NIFT Google account. First time? Register in a minute.</div></div>
+    <div class="step"><div class="n">2</div><div class="h">Pick a free slot</div><div class="d">Live calendar for the next 7 days. Add everyone using the lab.</div></div>
+    <div class="step"><div class="n">3</div><div class="h">Get approved</div><div class="d">FC-CC approves online (other depts: FC student &amp; Dept CC first). Email at every step.</div></div>
+  </div>
+  <div class="foot">NIFT Jodhpur · Fashion Communication · FC Photography Lab</div>
+</div>
+</body>
+</html>
