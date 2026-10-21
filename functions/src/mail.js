@@ -107,6 +107,20 @@ export async function requestDecision(b) {
   }
 }
 
+/**
+ * Hours on this date were released (booking cancelled / rejected). The Sheet
+ * checks which watched hours are really free now and emails those students.
+ */
+export async function notifySlotFreed(date) {
+  if (!sheetsUrl() || !date) return { ok: false, skipped: true };
+  try {
+    return await postToSheet({ action: 'slotFreed', date });
+  } catch (err) {
+    logger.error('Could not send slot-free alerts', { date, err: err.message });
+    return { ok: false, error: err.message };
+  }
+}
+
 /** Update a booking's row in the Google Sheet (for changes that send no email). Never throws. */
 export async function syncSheetBooking(b) {
   if (!sheetsUrl() || !b) return;

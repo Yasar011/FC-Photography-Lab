@@ -9,6 +9,7 @@ import {
   normalizeNiftId,
 } from '../shared/constants.js';
 import { slotKey } from '../shared/calendar.js';
+import { slotsReleased } from './waitlist.js';
 
 export const SLOT_TAKEN_MSG =
   'This slot has just been booked by another student. Please select another available time.';
@@ -72,7 +73,9 @@ export async function syncSlots(b) {
     if (day[k]?.bookingId !== b.id) continue; // never touch another booking's hour
     updates[`bookingSlots/${b.date}/${k}${hold ? '/status' : ''}`] = hold ? b.status : null;
   }
-  if (Object.keys(updates).length) await db.ref().update(updates);
+  if (!Object.keys(updates).length) return;
+  await db.ref().update(updates);
+  if (!hold) slotsReleased(b.date); // tell students waiting for these hours (in the background)
 }
 
 /** Write an /approvals log record + audit entry in one update. */

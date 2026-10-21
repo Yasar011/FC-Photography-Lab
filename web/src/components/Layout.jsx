@@ -26,6 +26,15 @@ function Item({ to, icon, children, count, hot, end }) {
   );
 }
 
+function Tab({ to, icon, children, count, end }) {
+  return (
+    <NavLink to={to} end={end} className={({ isActive }) => `tab ${isActive ? 'on' : ''}`}>
+      <span className="tab-icon"><Icon name={icon} />{count ? <span className="tab-count">{count}</span> : null}</span>
+      <span>{children}</span>
+    </NavLink>
+  );
+}
+
 export default function Layout() {
   const { profile, role, isAdmin, isStaff, isMain, isFcStudent, user, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
@@ -60,7 +69,7 @@ export default function Layout() {
   return (
     <>
       <header className="appbar">
-        <button className="icon-btn" onClick={toggleNav} aria-label="Main menu">
+        <button className={`icon-btn ${isStudent && !isAdmin ? 'student-menu' : ''}`} onClick={toggleNav} aria-label="Main menu">
           <Icon name="menu" />
           {fcPending + special + concerns + fcccPending + fcStepPending > 0 && <span className="dot">{fcPending + special + concerns + fcccPending + fcStepPending}</span>}
         </button>
@@ -92,7 +101,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <div className={`app-body ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
+      <div className={`app-body ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''} ${isStudent && !isAdmin ? 'has-tabs' : ''}`}>
         <div className="scrim" onClick={() => setMobileOpen(false)} />
         <aside className="sidenav" aria-label="Navigation">
           {isStudent ? (
@@ -143,6 +152,16 @@ export default function Layout() {
           </main>
         </div>
       </div>
+
+      {isStudent && !isAdmin && (
+        <nav className="tabbar" aria-label="Sections">
+          <Tab to="/" icon="home" end>Home</Tab>
+          <Tab to="/book" icon="calendar">Book</Tab>
+          <Tab to="/my-bookings" icon="list">Bookings</Tab>
+          {(isFcStudent || Object.keys(fcMine || {}).length > 0) && <Tab to="/approvals" icon="checkCircle" count={fcPending}>Approvals</Tab>}
+          <Tab to="/profile" icon="user">Profile</Tab>
+        </nav>
+      )}
     </>
   );
 }

@@ -334,6 +334,28 @@ try {
   await expectOk('Within all limits again → allowed', call('createBooking', base(DH, 21, 22), 'demo-fc2').then(async (r) => { await call('cancelBooking', { bookingId: r.bookingId, reason: 'test' }, 'demo-fccc'); return r; }));
   for (const r of [d1]) if (r) await call('cancelBooking', { bookingId: r.bookingId, reason: 'test cleanup' }, 'demo-fccc');
 
+  // ---- 11b. 24 hours, staff block, slot alerts ----
+  console.log('\n11b. Night hours (12 AM – 9 AM) · staff block · slot alerts');
+  store.update('settings/bookingRules', { ...RELAX, gridStartHour: 0, nightEndHour: 9 });
+  const nightB = await expectOk('Early-morning booking (6–8 AM) can be made', call('createBooking', base(DH, 6, 8), 'demo-fc3'));
+  check('…and it is a special (night) booking', booking(nightB?.bookingId)?.isSpecial === true);
+  if (nightB) await call('cancelBooking', { bookingId: nightB.bookingId, reason: 'test' }, 'demo-fccc');
+  await expectFail('A student blocks another student', call('updateStudent', { niftId: 'FC/24/022', setBookingBlock: { days: 2, reason: 'test' } }, 'demo-fc'));
+  await expectFail('Staff block without a reason', call('updateStudent', { niftId: 'FC/24/022', setBookingBlock: { days: 2, reason: '' } }, 'demo-staff'), /reason/);
+  await expectOk('Staff blocks a student ID for 2 days', call('updateStudent', { niftId: 'FC/24/022', setBookingBlock: { days: 2, reason: 'Lab left untidy' } }, 'demo-staff'));
+  await expectFail('Blocked student tries to book', call('createBooking', base(DH, 17, 18), 'demo-fc2'), /FC staff has blocked your booking.*Lab left untidy/);
+  await expectOk('Staff lifts the block', call('updateStudent', { niftId: 'FC/24/022', clearBookingBlock: true }, 'demo-staff'));
+  const held = await expectOk('Student A books 5–6 PM', call('createBooking', base(DH, 17, 18), 'demo-fc2'));
+  await expectFail('Student B asks for an alert on a free hour', call('watchSlot', { date: DH, hours: [20], on: true }, 'demo-fc3'), /free/);
+  await expectFail('Student A asks for an alert on own booking', call('watchSlot', { date: DH, hours: [17], on: true }, 'demo-fc2'), /own booking/);
+  await expectOk('Student B: notify me if 5 PM frees up', call('watchSlot', { date: DH, hours: [17], on: true }, 'demo-fc3'));
+  check('…alert saved for student B', Boolean((store.getRaw('slotWatch') || {})['demo-fc3']?.[`${DH}_h17`]));
+  if (held) await call('cancelBooking', { bookingId: held.bookingId, reason: 'test' }, 'demo-fc2');
+  check('…student A cancels → 5 PM is free again', !(store.getRaw('bookingSlots') || {})[DH]?.h17);
+  await expectOk('Student B removes the alert', call('watchSlot', { date: DH, hours: [17], on: false }, 'demo-fc3'));
+  check('…alert gone', !(store.getRaw('slotWatch') || {})['demo-fc3']?.[`${DH}_h17`]);
+  store.update('settings/bookingRules', RELAX);
+
   // ---- 12. Data integrity ----
   console.log('\n12. Data integrity');
   const all = store.getRaw('bookings') || {};

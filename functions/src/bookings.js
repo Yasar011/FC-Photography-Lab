@@ -61,7 +61,7 @@ import {
   addDays,
   formatDate,
 } from '../shared/calendar.js';
-import { sortedEntries, maxHoursFor, activeBookingBlock } from '../shared/defaults.js';
+import { sortedEntries, maxHoursFor, activeBookingBlock, blockText } from '../shared/defaults.js';
 
 export const CALL_OPTS = { secrets: [SMTP_PASS] };
 
@@ -123,7 +123,7 @@ export const createBooking = onCall(CALL_OPTS, async (request) => {
   }
   const recentCancel = activeBookingBlock(student);
   if (recentCancel && !staffBooking) {
-    fail('failed-precondition', `As you cancelled booking ${recentCancel.bookingId}, you can't book until ${formatDateTime(recentCancel.until)}.`);
+    fail('failed-precondition', blockText(recentCancel));
   }
   const blocked = accountBlockReason(student);
   if (blocked) fail('failed-precondition', blocked);

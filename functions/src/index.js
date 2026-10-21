@@ -33,3 +33,4 @@ export {
 } from './adminOps.js';
 export { academicScheduler, completeBookings } from './academicJob.js';
 export { saveMySignature, getMySignature, getBookingSignatures } from './signatures.js';
+export { watchSlot } from './waitlist.js';

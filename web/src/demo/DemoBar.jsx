@@ -22,7 +22,9 @@ export default function DemoBar() {
       setPanel('guide');
     } catch { /* ignore */ }
   }, [user]);
-  if (!user) return null;
+  // ?clean=1 hides the demo toolbar (clean app screenshots).
+  const clean = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('clean');
+  if (!user || clean) return null;
 
   return (
     <>

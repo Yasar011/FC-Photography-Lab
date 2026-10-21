@@ -4,8 +4,10 @@
 
 export const DEFAULT_BOOKING_RULES = {
   // Calendar grid (24h clock, IST). Slots are one hour long.
-  gridStartHour: 9,
+  gridStartHour: 0,
   gridEndHour: 24,
+  // Night hours: before this (midnight → 9 AM) and after regularEndHour → special approval.
+  nightEndHour: 9,
 
   // Weekday CLS classroom hours — blocked unless Staff Admin opens a slot.
   classDays: [1, 2, 3, 4, 5], // 0 = Sunday … 6 = Saturday
@@ -22,7 +24,7 @@ export const DEFAULT_BOOKING_RULES = {
   // Weekend → special approval workflow.
   weekendDays: [0, 6],
   weekendBookingEnabled: true,
-  weekendStartHour: 9,
+  weekendStartHour: 0,
   // When Staff Admin opens a public holiday, bookings start from this hour.
   holidayOpenStartHour: 9,
 
@@ -135,7 +137,7 @@ export const DEFAULT_INSTRUCTIONS = {
     '• Every booking is confirmed only after FC-CC approval. Bookings open for the next 7 days.\n' +
     '• Maximum 4 hours per booking for FC students, 3 hours for other students.\n' +
     '• Weekday 9 AM–5 PM is reserved for CLS classes unless opened by FC staff.\n' +
-    '• Bookings after 10 PM, on weekends or on holidays need special approval.\n' +
+    '• Bookings at night (10 PM – 9 AM), on weekends or on holidays need special approval.\n' +
     '• If you cancel a booking, you cannot make a new booking for 4 days.\n' +
     '• Carry your NIFT ID card. Report any equipment issue to the FC staff immediately.',
 };
@@ -164,6 +166,14 @@ export function maxHoursFor(rules, studentType) {
 }
 
 /** Active "cancelled recently" block on a student profile, or null. */
+/** What the student sees while blocked (late cancel, or blocked by FC staff). */
+export function blockText(block) {
+  const until = new Date(block.until).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  return block.byStaff
+    ? `FC staff has blocked your booking until ${until}. Reason: ${block.reason}.`
+    : `As you cancelled booking ${block.bookingId}, you can't book until ${until}.`;
+}
+
 export function activeBookingBlock(profile, nowMs = Date.now()) {
   const block = profile?.bookingBlock;
   return block?.until && block.until > nowMs ? block : null;

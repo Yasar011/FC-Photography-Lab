@@ -66,6 +66,9 @@ function doPost(e) {
       return json({ ok: false, error: 'Unauthorized' });
     }
 
+    // A booking released its hours: email students waiting for them (only hours that are free now).
+    if (body.action === 'slotFreed') return json(slotFreedFor(body.date));
+
     // Email the next one-click approver (Dept CC / Director) for this booking.
     if (body.action === 'requestDecision') {
       const id = body.booking && body.booking.id;
@@ -740,6 +743,7 @@ function submitDecision(bookingId, step, token, decision, remarks) {
     const sum = summarize(after);
     upsertBooking(sum);
     notifyAfterDecision(after, step, approve, label, remarks);
+    if (!approve) slotFreedFor(b.date);
     return { ok: true, message: approve ? 'Approved. Thank you — the next person has been informed.' : 'Rejected. The student has been informed.' };
   } finally {
     lock.releaseLock();
@@ -775,4 +779,54 @@ function notifyAfterDecision(b, step, approve, label, remarks) {
   const notify = Array.isArray(rules.approvalNotifyEmails) ? rules.approvalNotifyEmails : ['admin.jodhpur@nift.ac.in'];
   send('admin_approval_notice', notify, 'Approved (special permission) – FC Photography Lab booking ' + b.id, 'Special booking approved — FC-CC and Director',
     '<p>This special-permission booking (' + escHtml((b.specialReasons || []).join(', ')) + ') is approved by the FC-CC and the Director. Everyone using the lab is listed below with hostel and room.</p>' + link);
+}
+
+// ---------------------------------------------------------------------------
+// "Notify me if it frees up" — students watching hours another booking held
+// ---------------------------------------------------------------------------
+/** Hours on `date` were released: email everyone watching an hour that is free now. */
+function slotFreedFor(date) {
+  date = String(date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'Bad date' };
+  const all = adminDb('slotWatch') || {};
+  const day = adminDb('bookingSlots/' + date) || {};
+  const now = new Date();
+  const today = Utilities.formatDate(now, 'Asia/Kolkata', 'yyyy-MM-dd');
+  const nowH = Number(Utilities.formatDate(now, 'Asia/Kolkata', 'H'));
+  const upd = {};
+  const who = {};
+  Object.keys(all).forEach(function (uid) {
+    const list = all[uid] || {};
+    Object.keys(list).forEach(function (k) {
+      const w = list[k];
+      const path = 'slotWatch/' + uid + '/' + k;
+      if (!w || !w.date || w.date < today || (w.date === today && Number(w.hour) <= nowH)) { upd[path] = null; return; } // old
+      if (w.date !== date || day['h' + ('0' + w.hour).slice(-2)]) return; // another day, or still taken
+      upd[path] = null; // tell them once
+      if (!String(w.email || '').toLowerCase().endsWith(ALLOWED_DOMAIN)) return;
+      (who[uid] = who[uid] || { email: w.email, name: w.name || '', hours: [] }).hours.push(Number(w.hour));
+    });
+  });
+  if (Object.keys(upd).length) adminPatch(upd);
+
+  const props = PropertiesService.getScriptProperties();
+  const dayLabel = Utilities.formatDate(new Date(date + 'T12:00:00+05:30'), 'Asia/Kolkata', 'EEE d MMM yyyy');
+  let sent = 0;
+  Object.keys(who).forEach(function (uid) {
+    const p = who[uid];
+    p.hours.sort(function (a, b) { return a - b; });
+    const times = p.hours.map(function (h) { return hourLabel(h) + '–' + hourLabel(h + 1); }).join(', ');
+    const link = APP_URL + '/book?date=' + date + '&start=' + p.hours[0] + '&end=' + (p.hours[0] + 1);
+    const intro = '<p>Hi ' + escHtml(p.name) + ', the booking on <b>' + escHtml(dayLabel) + '</b> at <b>' + escHtml(times) + '</b> was cancelled, so this time is free again.</p>' +
+      '<p>It is first come, first served — book it now if you still need it.</p>' +
+      '<p style="margin:16px 0"><a href="' + link + '" style="display:inline-block;background:#2f5bd3;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">Book this slot</a></p>';
+    const mail = { type: 'slot_free', to: [p.email], subject: 'Lab slot free – ' + dayLabel + ', ' + times, html: mailFrame('A lab slot you wanted is free', intro, ''), text: 'Free again: ' + dayLabel + ', ' + times + '\nBook: ' + link };
+    try {
+      logEmail(mail, null, sendMail(mail, props, null));
+      sent++;
+    } catch (err) {
+      logEmail(mail, null, 'failed: ' + (err && err.message || err));
+    }
+  });
+  return { ok: true, sent: sent };
 }

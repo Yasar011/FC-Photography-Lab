@@ -81,6 +81,16 @@ export function formatRange(start, end) {
   return `${formatHour(start)} – ${formatHour(end)}`;
 }
 
+/** Compact hour / range for chips: 17 → "5 PM"; 17, 19 → "5–7 PM"; 11, 13 → "11 AM–1 PM". */
+export function shortHour(h) {
+  return `${((h + 11) % 12) + 1} ${h % 24 < 12 ? 'AM' : 'PM'}`;
+}
+export function shortRange(a, b) {
+  const pa = a % 24 < 12 ? 'AM' : 'PM';
+  const pb = b % 24 < 12 ? 'AM' : 'PM';
+  return pa === pb ? `${((a + 11) % 12) + 1}–${shortHour(b)}` : `${shortHour(a)}–${shortHour(b)}`;
+}
+
 export function formatDate(dateStr, { weekday = false } = {}) {
   if (!isValidDateStr(dateStr)) return dateStr || '';
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -206,10 +216,13 @@ function normalRules({ date, hour, r, holiday, base }) {
   const open = { ...base, state: SLOT.AVAILABLE, bookable: true };
   const afterHours = r.afterHoursEnabled ? special : { ...base, state: SLOT.CLOSED };
 
+  // Night: after regularEndHour (10 PM) or before nightEndHour (9 AM).
+  const night = hour >= r.regularEndHour || hour < (r.nightEndHour ?? 9);
+
   if (holiday) {
     if (!holiday.open) return { ...base, state: SLOT.HOLIDAY, reason: holiday.name || 'Public holiday' };
+    if (night) return afterHours;
     if (hour < r.holidayOpenStartHour) return { ...base, state: SLOT.CLOSED };
-    if (hour >= r.regularEndHour) return afterHours;
     return holiday.requiresSpecial ? special : open;
   }
 
@@ -219,7 +232,7 @@ function normalRules({ date, hour, r, holiday, base }) {
     return special;
   }
 
-  if (hour >= r.regularEndHour) return afterHours;
+  if (night) return afterHours;
   if ((r.classDays || []).includes(dow) && hour >= r.classStartHour && hour < r.classEndHour) {
     return { ...base, state: SLOT.CLASS, label: r.classLabel };
   }
@@ -335,7 +348,7 @@ export function submissionProblem({ rules, nowMs = Date.now(), isSpecial, startA
     const open = Number(rules.specialBookingOpenHour ?? 9);
     const close = Number(rules.specialBookingCloseHour ?? 14);
     if (soon && (h < open || h >= close)) {
-      return `Special bookings (after 10 PM, weekend or holiday) for ${soonLabel} can only be requested between ${hourLabel(open)} and ${hourLabel(close)}. Further ahead you can request any time.`;
+      return `Special bookings (night 10 PM – 9 AM, weekend or holiday) for ${soonLabel} can only be requested between ${hourLabel(open)} and ${hourLabel(close)}. Further ahead you can request any time.`;
     }
     const notice = Number(rules.specialMinNoticeHours ?? 24);
     if (startAt && startAt - nowMs < notice * 3600000) {

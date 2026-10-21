@@ -110,7 +110,7 @@ export default function AdminCalendar() {
           holidays={settings.holidays || {}}
           onHolidayClick={isStaff ? (d) => setModal({ type: settings.holidays[d]?.open ? 'holidayClose' : 'holidayOpen', date: d }) : undefined}
           onDayClick={(d) => { setAnchor(d); setView('day'); }}
-          scrollToHour={rules.gridStartHour}
+          scrollToHour={Math.max(rules.gridStartHour, 8)}
         />
       </section>
 

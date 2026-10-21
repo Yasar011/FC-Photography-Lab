@@ -116,6 +116,51 @@ function LiftBlock({ niftId }) {
   );
 }
 
+const BLOCK_DAYS = [1, 2, 3, 4, 7, 14, 30, 60, 90];
+
+function BlockStudent({ niftId }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState(4);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!open) return <button className="btn btn-sm btn-danger" onClick={() => setOpen(true)}>Block booking…</button>;
+  return (
+    <div className="block-box">
+      <div className="row" style={{ gap: 8 }}>
+        <span className="small">Block this student ID for</span>
+        <select className="select" style={{ width: 'auto' }} value={days} onChange={(e) => setDays(Number(e.target.value))}>
+          {BLOCK_DAYS.map((n) => <option key={n} value={n}>{n} day{n > 1 ? 's' : ''}</option>)}
+        </select>
+      </div>
+      <input className="input" placeholder="Reason (the student sees this)" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} />
+      <div className="row" style={{ gap: 8 }}>
+        <button
+          className="btn btn-sm btn-danger"
+          disabled={busy || reason.trim().length < 3}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await call('updateStudent', { niftId, setBookingBlock: { days, reason: reason.trim() } });
+              toast(`Booking blocked for ${days} day${days > 1 ? 's' : ''}`, 'ok');
+              setOpen(false);
+              setReason('');
+            } catch (e) {
+              toast(e.message, 'error');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Block
+        </button>
+        <button className="btn btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+      <div className="tiny muted">Their existing bookings stay. They can't make new bookings until the block ends (you can lift it any time).</div>
+    </div>
+  );
+}
+
 function ViewStudent({ student: u, onClose, onEdit }) {
   const { items } = useMyBookings(u.uid);
   const q = dbQuery('auditLogs', orderByChild('niftId'), equalTo(u.niftId));
@@ -130,13 +175,19 @@ function ViewStudent({ student: u, onClose, onEdit }) {
         <dt>Student type</dt><dd><TypeBadge type={u.studentType} /></dd>
         <dt>Status</dt><dd><AccountBadge status={u.status} /> {u.bookingAccess === false && <span className="small muted">booking access disabled</span>}</dd>
         <dt>Registered</dt><dd>{formatDateTime(u.createdAt)}</dd>
-        {u.bookingBlock?.until > Date.now() && (
+        {u.bookingBlock?.until > Date.now() ? (
           <>
             <dt>Booking blocked</dt>
             <dd>
-              Until {formatDateTime(u.bookingBlock.until)} (cancelled {u.bookingBlock.bookingId}){' '}
+              Until {formatDateTime(u.bookingBlock.until)}{' '}
+              {u.bookingBlock.byStaff ? `(by ${u.bookingBlock.byStaff}: ${u.bookingBlock.reason})` : `(cancelled ${u.bookingBlock.bookingId})`}{' '}
               <LiftBlock niftId={u.niftId} />
             </dd>
+          </>
+        ) : (
+          <>
+            <dt>Booking</dt>
+            <dd><BlockStudent niftId={u.niftId} /></dd>
           </>
         )}
         {u.graduatedAt && <><dt>Graduated</dt><dd>{formatDateTime(u.graduatedAt)}</dd></>}

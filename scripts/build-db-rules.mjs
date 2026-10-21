@@ -55,8 +55,10 @@ const BOOKING_CREATE = and(
   "!newData.child('special/steps').exists()",
   // other departments always need their FC student first
   `(newData.child('studentType').val() !== 'OTHER_DEPT_STUDENT' || (${NEW_STATUS} === 'PENDING_FC_APPROVAL' && newData.child('fcStudentUid').exists() && newData.child('fcStudentUid').val() !== auth.uid))`,
-  // after 10 PM is always special
-  "(newData.child('endHour').val() <= 22 || newData.child('isSpecial').val() === true)",
+  // night (after 10 PM or before 9 AM) is always special
+  "((newData.child('endHour').val() <= 22 && newData.child('startHour').val() >= 9) || newData.child('isSpecial').val() === true)",
+  "newData.child('startHour').val() >= 0",
+  "newData.child('endHour').val() <= 24",
   // when students may book (IST): regular 9 AM–4 PM; special 9 AM–2 PM and ≥ 24 h ahead
   `(newData.child('isSpecial').val() === true || ${FAR_AHEAD} || !${R('regularBookingOpenHour')}.exists() || !${R('regularBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('regularBookingOpenHour')}.val() && ${IST_HOUR} < ${R('regularBookingCloseHour')}.val()))`,
   `(newData.child('isSpecial').val() !== true || ((${FAR_AHEAD} || !${R('specialBookingOpenHour')}.exists() || !${R('specialBookingCloseHour')}.exists() || (${IST_HOUR} >= ${R('specialBookingOpenHour')}.val() && ${IST_HOUR} < ${R('specialBookingCloseHour')}.val())) && (!${R('specialMinNoticeHours')}.exists() || newData.child('startAt').val() - now >= ${R('specialMinNoticeHours')}.val() * 3600000)))`,
@@ -247,6 +249,26 @@ const rules = {
           '.read': V,
           '.write': V,
           '.validate': "newData.isNumber() && ((!data.exists() && newData.val() === 1) || (data.exists() && newData.val() === data.val() + 1))",
+        },
+      },
+    },
+
+    // "Notify me if it frees up" — each student reads and writes only their own list.
+    slotWatch: {
+      $uid: {
+        '.read': and(V, 'auth.uid === $uid'),
+        $key: {
+          '.write': and(V, 'auth.uid === $uid', or(
+            '!newData.exists()',
+            and(
+              `newData.child('email').val() === ${EMAIL}`,
+              "newData.child('date').isString()",
+              "newData.child('date').val().length === 10",
+              "newData.child('hour').isNumber()",
+              "newData.child('hour').val() >= 0",
+              "newData.child('hour').val() <= 23",
+            ),
+          )),
         },
       },
     },

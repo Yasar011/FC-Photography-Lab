@@ -4,18 +4,20 @@ import { orderByChild, startAt, endAt } from 'firebase/database';
 
 import { useAuth } from '../lib/auth.jsx';
 import { useLive, dbQuery, useNow } from '../lib/hooks.js';
-import { useMyBookings, isUpcoming } from '../lib/bookings.js';
+import { useMyBookings, useMyWatches, isUpcoming } from '../lib/bookings.js';
+import { call } from '../firebase.js';
 import { STATUS_META, ACCOUNT_STATUS } from '@shared/constants.js';
-import { formatHour, bookingWindow, datesBetween, addDays, formatDate, formatRange, formatDateTime, BOOKABLE_STATES, todayIST } from '@shared/calendar.js';
+import { formatHour, bookingWindow, datesBetween, addDays, formatDate, formatRange, formatDateTime, BOOKABLE_STATES, todayIST, slotKey } from '@shared/calendar.js';
 
 import { useSlotRange, daySlots } from './Calendar.jsx';
-import { maxHoursFor, activeBookingBlock } from '@shared/defaults.js';
+import { maxHoursFor, activeBookingBlock, blockText } from '@shared/defaults.js';
 import TimeGrid from './cal/TimeGrid.jsx';
 import MiniMonth from './cal/MiniMonth.jsx';
+import SlotList from './cal/SlotList.jsx';
 import { Popover } from './cal/Overlays.jsx';
 import BookingForm from './BookingForm.jsx';
 import Icon, { PlusColor } from './Icon.jsx';
-import { Alert, StatusBadge } from './ui.jsx';
+import { Alert, StatusBadge, useToast } from './ui.jsx';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export function rangeTitle(dates) {
@@ -101,6 +103,18 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
     if (b.faculty?.email && !pastFaculty.some((f) => f.email === b.faculty.email)) pastFaculty.push(b.faculty);
   }
   const mineMap = Object.fromEntries(mine.map((b) => [b.id, b]));
+  // "Notify me if it frees up" on other people's bookings (students only).
+  const toast = useToast();
+  const watches = useMyWatches(staffMode ? null : user.uid);
+  const isWatching = (date, h) => Boolean(watches[`${date}_${slotKey(h)}`]);
+  const setWatch = async (date, hours, on) => {
+    try {
+      await call('watchSlot', { date, hours, on });
+      toast(on ? "We'll email you if this time frees up." : 'Alert removed.', 'ok');
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  };
   const bq = useMemo(() => (staffMode ? dbQuery('bookings', orderByChild('date'), startAt(win.from), endAt(win.to)) : null), [staffMode, win.from, win.to]);
   const { value: allMap } = useLive(bq, [bq]);
   const bookingInfo = (id) => (staffMode ? allMap?.[id] : mineMap[id]);
@@ -149,6 +163,68 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
   const popSlot = popSlots[0];
   const popRange = popSlot ? [Math.min(...popSlots.map((s) => s.hour)), Math.max(...popSlots.map((s) => s.hour)) + 1] : null;
 
+  const blockedAlert = inactive && (
+    <div style={{ marginBottom: 12 }}>
+      <Alert kind="error">
+        {cancelBlock
+          ? <span><b>{blockText(cancelBlock)}</b> You can still see the calendar.</span>
+          : student.status === ACCOUNT_STATUS.GRADUATED
+          ? 'Graduated students cannot create new bookings. Your previous bookings remain in My bookings.'
+          : 'Booking access is disabled for this account. Please contact the FC Staff.'}
+      </Alert>
+    </div>
+  );
+
+  const form = formOpen && selection && (
+    <BookingForm
+      key={staffMode ? student.uid : 'self'}
+      student={student}
+      staffMode={staffMode}
+      selection={selection}
+      onSelection={(s) => { setSelection(s); setAnchor(s.date); }}
+      dates={windowDates}
+      slotsByDate={slotsByDate}
+      onClose={() => { setFormOpen(false); setSelection(null); }}
+      pastFaculty={pastFaculty.slice(0, 4)}
+    />
+  );
+
+  // Phones: day chips + a list of hours (like an app), not the week grid.
+  if (narrow) {
+    const day = windowDates.includes(anchor) ? anchor : windowDates[0];
+    return (
+      <div className="book-mobile">
+        <div className="row-between" style={{ marginBottom: 4 }}>
+          <h1>{staffMode ? `Book for ${student.name?.split(' ')[0] || 'student'}` : 'Book a slot'}</h1>
+          <span className="live-dot">Live</span>
+        </div>
+        <p className="small muted" style={{ marginBottom: 12 }}>
+          {staffMode
+            ? `Up to ${rules.staffBookingWindowDays} days ahead · max ${maxH} h`
+            : `Tap free hours (up to ${maxH} h). Today/tomorrow: book between ${formatHour(rules.regularBookingOpenHour ?? 9)} and ${formatHour(rules.regularBookingCloseHour ?? 16)}.`}
+        </p>
+        {blockedAlert}
+        <SlotList
+          dates={windowDates}
+          day={day}
+          onDay={(d) => { setAnchor(d); if (selection?.date !== d) setSelection(null); }}
+          slotsByDate={slotsByDate}
+          selection={selection}
+          onSelection={setSelection}
+          maxSelect={maxH}
+          onContinue={() => setFormOpen(true)}
+          disabled={inactive}
+          holidays={settings.holidays || {}}
+          today={today}
+          isWatching={isWatching}
+          nightEnd={rules.nightEndHour ?? 9}
+          onWatch={staffMode || inactive ? undefined : setWatch}
+        />
+        {form}
+      </div>
+    );
+  }
+
   return (
     <div className="cal-layout">
       <aside className="cal-side">
@@ -186,17 +262,7 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
       </aside>
 
       <section style={{ minWidth: 0 }}>
-        {inactive && (
-          <div style={{ marginBottom: 12 }}>
-            <Alert kind="error">
-              {cancelBlock
-                ? <span><b>As you cancelled booking {cancelBlock.bookingId}, you can't book until {formatDateTime(cancelBlock.until)}.</b> You can still see the calendar.</span>
-                : student.status === ACCOUNT_STATUS.GRADUATED
-                ? 'Graduated students cannot create new bookings. Your previous bookings remain in My bookings.'
-                : 'Booking access is disabled for this account. Please contact the FC Staff.'}
-            </Alert>
-          </div>
-        )}
+        {blockedAlert}
         <div className="cal-toolbar">
           <button className="btn btn-sm" onClick={() => setAnchor(today)}>Today</button>
           <button className="icon-btn" onClick={() => step(-1)} disabled={!canBack} aria-label="Previous"><Icon name="chevronLeft" /></button>
@@ -232,19 +298,7 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
         />
       </section>
 
-      {formOpen && selection && (
-        <BookingForm
-          key={staffMode ? student.uid : 'self'}
-          student={student}
-          staffMode={staffMode}
-          selection={selection}
-          onSelection={(s) => { setSelection(s); setAnchor(s.date); }}
-          dates={windowDates}
-          slotsByDate={slotsByDate}
-          onClose={() => { setFormOpen(false); setSelection(null); }}
-          pastFaculty={pastFaculty.slice(0, 4)}
-        />
-      )}
+      {form}
 
       {pop && (
         <Popover anchor={pop.rect} onClose={() => setPop(null)}>
@@ -264,7 +318,20 @@ export default function BookingPlanner({ student, staffMode = false, initialSele
               <div className="ev-actions"><Link className="btn btn-tonal btn-sm" to={`/bookings/${popBooking.id}`}>Open booking</Link></div>
             </>
           ) : (
-            <div className="ev-line"><Icon name="lock" /><span>This time is taken by another booking.</span></div>
+            <>
+              <div className="ev-line"><Icon name="lock" /><span>This time is taken by another booking{popSlot?.state === 'PENDING' ? ' (waiting for approval)' : ''}.</span></div>
+              {!staffMode && !inactive && popSlot && (() => {
+                const hours = popSlots.map((s) => s.hour);
+                const on = hours.every((h) => isWatching(popSlot.date, h));
+                return (
+                  <div className="ev-actions">
+                    <button className={`btn btn-sm ${on ? '' : 'btn-tonal'}`} onClick={() => setWatch(popSlot.date, hours, !on)}>
+                      <Icon name="bell" /> {on ? 'Stop the alert' : 'Notify me if it frees up'}
+                    </button>
+                  </div>
+                );
+              })()}
+            </>
           )}
         </Popover>
       )}

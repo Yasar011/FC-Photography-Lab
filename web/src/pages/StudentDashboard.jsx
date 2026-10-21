@@ -2,17 +2,17 @@ import { Link } from 'react-router-dom';
 
 import { useAuth } from '../lib/auth.jsx';
 import { useNow } from '../lib/hooks.js';
-import { useMyBookings, useMyFcApprovals, isUpcoming } from '../lib/bookings.js';
-import { StatusBadge, Alert, Empty } from '../components/ui.jsx';
+import { useMyBookings, useMyFcApprovals, useMyWatches, isUpcoming } from '../lib/bookings.js';
+import { call } from '../firebase.js';
+import { StatusBadge, Alert, useToast } from '../components/ui.jsx';
 import { nextSpecialStep } from '../components/BookingBits.jsx';
 import Icon from '../components/Icon.jsx';
-import { formatRange, formatHour, formatDateTime, istParts, dayOfWeek, DAY_NAMES, bookingWindow, datesBetween, addDays, todayIST, SLOT } from '@shared/calendar.js';
+import { shortRange, istParts, dayOfWeek, DAY_NAMES, bookingWindow, datesBetween, addDays, todayIST, SLOT } from '@shared/calendar.js';
 import { useSlotRange, daySlots } from '../components/Calendar.jsx';
-import { activeBookingBlock } from '@shared/defaults.js';
-import { ACCOUNT_STATUS, FC_APPROVAL_STATE, STATUS_META } from '@shared/constants.js';
+import { activeBookingBlock, blockText } from '@shared/defaults.js';
+import { ACCOUNT_STATUS, FC_APPROVAL_STATE } from '@shared/constants.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const BAR = { green: 'var(--ev-approved)', orange: 'var(--ev-pending)', yellow: 'var(--ev-pending)' };
 
 export default function StudentDashboard() {
   const { user, profile, isFcStudent, rules } = useAuth();
@@ -30,10 +30,10 @@ export default function StudentDashboard() {
   const cancelBlock = activeBookingBlock(profile, now);
 
   return (
-    <div className="stack-lg" style={{ maxWidth: 1080 }}>
-      <div>
-        <h1 style={{ fontWeight: 500, fontSize: 28 }}>{greet}, {firstName}</h1>
-        <p className="muted" style={{ marginTop: 4 }}>{profile.niftId} · {profile.department} · Semester {profile.semester}</p>
+    <div className="stack-lg student-home">
+      <div className="hello">
+        <h1>{greet}, {firstName}</h1>
+        <p className="muted">{profile.niftId} · {profile.department} · Semester {profile.semester}</p>
       </div>
 
       {!active && (
@@ -45,12 +45,6 @@ export default function StudentDashboard() {
       )}
       {active && Number(profile.semester) <= rules.firstYearMaxSemester && <Alert kind="warn">{rules.firstYearMessage}</Alert>}
 
-      {pendingApprovals.length > 0 && (
-        <Link to="/approvals" className="card card-pad row-between" style={{ textDecoration: 'none', color: 'var(--ink)', background: 'var(--orange-bg)', border: 'none' }}>
-          <span className="row"><Icon name="checkCircle" /> <b>{pendingApprovals.length} FC approval request{pendingApprovals.length > 1 ? 's' : ''}</b> waiting for you</span>
-          <span className="btn btn-sm">Review</span>
-        </Link>
-      )}
       {actionNeeded.map((b) => {
         const step = nextSpecialStep(b);
         return (
@@ -59,7 +53,7 @@ export default function StudentDashboard() {
               <Icon name="stamp" />
               <span>
                 <b>Action needed for {b.id}:</b> {step.key === 'fcAssistant' ? step.todo : 'Take the printed form for signatures, then return it to the FC-CC'}.
-                <div className="small muted">{DAY_NAMES[dayOfWeek(b.date)]} {Number(b.date.slice(8))} {MONTHS[Number(b.date.slice(5, 7)) - 1]} · {formatRange(b.startHour, b.endHour)}</div>
+                <div className="small muted">{DAY_NAMES[dayOfWeek(b.date)]} {Number(b.date.slice(8))} {MONTHS[Number(b.date.slice(5, 7)) - 1]} · {shortRange(b.startHour, b.endHour)}</div>
               </span>
             </span>
             <span className="btn btn-sm">Track</span>
@@ -72,60 +66,96 @@ export default function StudentDashboard() {
       )}
       {active && cancelBlock && (
         <Alert kind="error">
-          <span><b>As you cancelled booking {cancelBlock.bookingId}, you can't book until {formatDateTime(cancelBlock.until)}.</b> Your other bookings are not affected.</span>
+          <span><b>{blockText(cancelBlock)}</b> Your other bookings are not affected.</span>
         </Alert>
       )}
-      {active && !cancelBlock && <QuickBook />}
-
-      <div className="grid grid-4">
-        <Link to="/book" className="tile primary">
-          <span className="tile-icon"><Icon name="plus" /></span>
-          <span className="tile-t">Book the lab</span>
-          <span className="tile-d">Live calendar · next {rules.bookingWindowDays} days</span>
-        </Link>
-        <Link to="/my-bookings" className="tile">
-          <span className="tile-icon"><Icon name="list" /></span>
-          <span className="tile-t">My bookings</span>
-          <span className="tile-d">{upcoming.length} upcoming · {items.length} total</span>
-        </Link>
-        {(isFcStudent || approvals.length > 0) && (
-          <Link to="/approvals" className="tile">
-            <span className="tile-icon"><Icon name="checkCircle" /></span>
-            <span className="tile-t">My FC approvals</span>
-            <span className="tile-d">{pendingApprovals.length} pending</span>
-          </Link>
-        )}
-        <Link to="/profile" className="tile">
-          <span className="tile-icon"><Icon name="user" /></span>
-          <span className="tile-t">Profile</span>
-          <span className="tile-d">{profile.email}</span>
-        </Link>
-      </div>
-
-      <section className="card">
-        <div className="card-head">
-          <h2>Upcoming</h2>
-          <span className="live-dot">Live</span>
+      <div className="home-grid">
+        <div className="stack">
+          {active && !cancelBlock && <QuickBook />}
+          {active && !cancelBlock && (
+            <Link to="/book" className="btn btn-primary btn-block btn-lg"><Icon name="plus" /> Book the lab</Link>
+          )}
+          <SlotAlerts uid={user.uid} />
+          <div className="home-links">
+            {(isFcStudent || approvals.length > 0) && (
+              <Link to="/approvals" className={`home-link ${pendingApprovals.length ? 'hot' : ''}`}>
+                <span className="home-link-icon"><Icon name="checkCircle" /></span>
+                <span className="grow"><b>My FC approvals</b><span className="small muted">{pendingApprovals.length ? `${pendingApprovals.length} request${pendingApprovals.length > 1 ? 's' : ''} waiting for you — tap to review` : 'Nothing waiting'}</span></span>
+                <Icon name="chevronRight" />
+              </Link>
+            )}
+            <Link to="/book" className="home-link">
+              <span className="home-link-icon"><Icon name="calendar" /></span>
+              <span className="grow"><b>Lab calendar</b><span className="small muted">Live · next {rules.bookingWindowDays} days</span></span>
+              <Icon name="chevronRight" />
+            </Link>
+          </div>
         </div>
-        {loading ? <div className="card-body muted">Loading…</div> : upcoming.length === 0 ? (
-          <Empty title="Nothing booked yet"><Link to="/book">Find a free slot →</Link></Empty>
-        ) : upcoming.map((b) => (
-          <Link key={b.id} to={`/bookings/${b.id}`} className="list-item" style={{ justifyContent: 'flex-start', flexWrap: 'nowrap' }}>
-            <div className="agenda-date">
-              <div className="m">{DAY_NAMES[dayOfWeek(b.date)]}</div>
-              <div className="d">{Number(b.date.slice(8))}</div>
-              <div className="m">{MONTHS[Number(b.date.slice(5, 7)) - 1]}</div>
+
+        <section>
+          <div className="row-between" style={{ marginBottom: 10 }}>
+            <h2>My bookings</h2>
+            <Link className="small" to="/my-bookings">See all ({items.length})</Link>
+          </div>
+          {loading ? <p className="muted small">Loading…</p> : upcoming.length === 0 ? (
+            <div className="bk-empty">Nothing booked yet. <Link to="/book">Find a free slot →</Link></div>
+          ) : (
+            <div className="bk-list">
+              {upcoming.map((b) => <BookingCard key={b.id} b={b} />)}
             </div>
-            <span className="agenda-bar" style={{ background: BAR[STATUS_META[b.status]?.tone] || 'var(--ev-booked)' }} />
-            <div className="grow">
-              <div style={{ fontWeight: 600 }}>{b.purpose}</div>
-              <div className="small muted">{formatRange(b.startHour, b.endHour)} · <span className="mono">{b.id}</span></div>
-            </div>
-            <StatusBadge status={b.status} />
-          </Link>
-        ))}
-      </section>
+          )}
+        </section>
+      </div>
     </div>
+  );
+}
+
+/** Hours the student asked to be emailed about if they free up. */
+function SlotAlerts({ uid }) {
+  const toast = useToast();
+  const now = useNow(60000);
+  const today = todayIST(now);
+  const list = Object.values(useMyWatches(uid)).filter((w) => w.date >= today).sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour);
+  if (!list.length) return null;
+  const remove = async (w) => {
+    try {
+      await call('watchSlot', { date: w.date, hours: [w.hour], on: false });
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  };
+  return (
+    <section className="card card-pad">
+      <h2>Slot alerts</h2>
+      <div className="small muted">We'll email you if one of these frees up.</div>
+      <div className="watch-list">
+        {list.map((w) => (
+          <span key={w.date + w.hour} className="watch-chip">
+            <Icon name="bell" />
+            {DAY_NAMES[dayOfWeek(w.date)]} {Number(w.date.slice(8))} {MONTHS[Number(w.date.slice(5, 7)) - 1]} · {shortRange(w.hour, w.hour + 1)}
+            <button onClick={() => remove(w)} aria-label="Remove alert"><Icon name="close" /></button>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** A booking as a rounded card: date block, purpose, time and a status pill. */
+export function BookingCard({ b }) {
+  return (
+    <Link to={`/bookings/${b.id}`} className="bk-card">
+      <span className="bk-date">
+        <span>{DAY_NAMES[dayOfWeek(b.date)]}</span>
+        <b>{Number(b.date.slice(8))}</b>
+        <span>{MONTHS[Number(b.date.slice(5, 7)) - 1]}</span>
+      </span>
+      <span className="grow">
+        <span className="bk-title">{b.purpose || 'Lab booking'}</span>
+        <span className="small muted">{shortRange(b.startHour, b.endHour)} · <span className="mono">{b.id}</span></span>
+      </span>
+      <StatusBadge status={b.status} />
+    </Link>
   );
 }
 
@@ -147,21 +177,18 @@ function QuickBook() {
   const dayLabel = (d) => (d === today ? 'Today' : d === addDays(today, 1) ? 'Tomorrow' : `${DAY_NAMES[dayOfWeek(d)]} ${Number(d.slice(8))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`);
   return (
     <section className="card card-pad">
-      <div className="row-between" style={{ marginBottom: 12 }}>
-        <div>
-          <h2>Next free slots</h2>
-          <div className="small muted">Tap one to book it — you can change the time in the form.</div>
-        </div>
-        <Link className="btn btn-sm" to="/book">Open calendar</Link>
+      <div className="row-between" style={{ marginBottom: 10 }}>
+        <h2>Next free slots</h2>
+        <span className="live-dot">Live</span>
       </div>
       {loading ? <p className="small muted">Checking live availability…</p> : picks.length === 0 ? (
-        <p className="small muted">No free regular slots this week. <Link to="/book">See all times</Link> (evenings after 10 PM and weekends need special approval).</p>
+        <p className="small muted">No free regular slots this week. <Link to="/book">See all times</Link> (night hours 10 PM – 9 AM and weekends need special approval).</p>
       ) : (
         <div className="quick-chips">
           {picks.map((s) => (
             <Link key={s.date + s.hour} className="quick-chip" to={`/book?date=${s.date}&start=${s.hour}&end=${s.hour + 1}`}>
               <span className="d">{dayLabel(s.date)}</span>
-              <span className="t">{formatHour(s.hour)} – {formatHour(s.hour + 1)}</span>
+              <span className="t">{shortRange(s.hour, s.hour + 1)}</span>
             </Link>
           ))}
         </div>

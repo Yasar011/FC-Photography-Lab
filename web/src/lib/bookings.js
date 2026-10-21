@@ -20,3 +20,9 @@ export function useMyFcApprovals(uid) {
 }
 
 export const isUpcoming = (b, now = Date.now()) => ACTIVE_STATUSES.includes(b.status) && b.endAt > now;
+
+/** Hours the student asked to be told about if they free up: { "2026-10-27_h18": { date, hour } }. */
+export function useMyWatches(uid) {
+  const { value } = useLive(uid ? `slotWatch/${uid}` : null, [uid]);
+  return value || {};
+}

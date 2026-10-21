@@ -40,6 +40,16 @@ export function accountByUid(uid) {
   return DEMO_ACCOUNTS.find((a) => a.uid === uid) || null;
 }
 
+// Demo only: ?as=<uid> signs in as that account (used for app screenshots).
+try {
+  const as = new URLSearchParams(window.location.search).get('as');
+  if (as && DEMO_ACCOUNTS.some((a) => a.uid === as)) {
+    sessionStorage.setItem(KEY, as);
+    localStorage.setItem(LAST, as);
+    localStorage.setItem('fc-demo-guide-seen', '1');
+  }
+} catch { /* ignore */ }
+
 export function currentUser() {
   try {
     let uid = sessionStorage.getItem(KEY);

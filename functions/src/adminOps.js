@@ -223,6 +223,16 @@ export const updateStudent = onCall(async (request) => {
   const changes = {};
   for (const k of Object.keys(next)) if (next[k] !== user[k]) changes[k] = { from: user[k] ?? null, to: next[k] };
   const liftBlock = d.clearBookingBlock === true && Boolean(user.bookingBlock);
+  // Staff block: this student ID can't book for N days (reason shown to the student).
+  let staffBlock = null;
+  if (d.setBookingBlock) {
+    const days = Number(d.setBookingBlock.days);
+    if (!Number.isInteger(days) || days < 1 || days > 365) fail('invalid-argument', 'Block for 1 to 365 days.');
+    const reason = str(d.setBookingBlock.reason, 300);
+    if (reason.length < 3) fail('invalid-argument', 'Please give a reason for the block.');
+    staffBlock = { until: Date.now() + days * 86400000, at: Date.now(), days, byStaff: actor.name || actor.email, reason };
+  }
+  if (staffBlock) changes.bookingBlock = { from: user.bookingBlock?.until ?? null, to: staffBlock.until };
   const idmDecision = ['approve', 'reject'].includes(d.idmDecision) && user.idmRequest?.state === 'PENDING' ? d.idmDecision : null;
   if (idmDecision) changes.idmRequest = { from: 'PENDING', to: idmDecision === 'approve' ? 'APPROVED' : 'REJECTED' };
   if (liftBlock) changes.bookingBlock = { from: user.bookingBlock.until, to: null };
@@ -233,6 +243,7 @@ export const updateStudent = onCall(async (request) => {
   for (const [k, v] of Object.entries(next)) updates[`users/${reg.uid}/${k}`] = v;
   updates[`users/${reg.uid}/updatedAt`] = TS;
   if (liftBlock) updates[`users/${reg.uid}/bookingBlock`] = null;
+  if (staffBlock) updates[`users/${reg.uid}/bookingBlock`] = staffBlock;
   if (idmDecision) {
     updates[`users/${reg.uid}/idmRequest`] = { state: changes.idmRequest.to, at: user.idmRequest.at, decidedAt: Date.now(), decidedBy: actor.name, remarks: str(d.remarks, 500) || null };
     updates[`students/${key}/idmRequest`] = changes.idmRequest.to;
@@ -242,6 +253,8 @@ export const updateStudent = onCall(async (request) => {
   updates[`students/${key}/bookingAccess`] = next.bookingAccess ?? user.bookingAccess ?? true;
   const action = idmDecision
     ? (idmDecision === 'approve' ? 'FC_IDM_REQUEST_APPROVED' : 'FC_IDM_REQUEST_REJECTED')
+    : staffBlock
+    ? 'BOOKING_BLOCKED_BY_STAFF'
     : liftBlock && Object.keys(changes).length === 1
     ? 'BOOKING_BLOCK_LIFTED'
     : changes.studentType
@@ -251,7 +264,7 @@ export const updateStudent = onCall(async (request) => {
       : changes.semester
         ? 'SEMESTER_UPDATE'
         : 'STUDENT_UPDATED';
-  const [ap, av] = auditEntry(by, action, { niftId: user.niftId, details: { changes, remarks: str(d.remarks, 500) || null } });
+  const [ap, av] = auditEntry(by, action, { niftId: user.niftId, details: { changes, remarks: str(d.remarks, 500) || staffBlock?.reason || null } });
   updates[ap] = av;
   await db.ref().update(updates);
   return { ok: true, changed: true };
@@ -341,6 +354,7 @@ const SETTINGS_VALIDATORS = {
       weekendBookingEnabled: v.weekendBookingEnabled === true,
       weekendStartHour: intIn(v.weekendStartHour, 0, 23, 'Weekend start'),
       holidayOpenStartHour: intIn(v.holidayOpenStartHour, 0, 23, 'Holiday start'),
+      nightEndHour: intIn(v.nightEndHour ?? 9, 0, 23, 'Night ends'),
       bookingWindowDays: intIn(v.bookingWindowDays, 1, 7, 'Student booking window'),
       staffBookingWindowDays: intIn(v.staffBookingWindowDays, 1, 120, 'Staff booking window'),
       maxDurationHours: intIn(v.maxDurationHours, 1, 4, 'Maximum hours (other students)'),

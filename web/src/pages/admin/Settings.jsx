@@ -120,6 +120,7 @@ function RulesEditor() {
           <Field label="Regular booking starts">{hourSel('regularStartHour', 0, 23)}</Field>
           <Field label="Regular booking ends" help="Later hours need special approval">{hourSel('regularEndHour', 1, 24)}</Field>
           <Field label="Opened holidays start at">{hourSel('holidayOpenStartHour', 0, 23)}</Field>
+          <Field label="Night hours end (special before this)">{hourSel('nightEndHour', 0, 23)}</Field>
         </div>
       </section>
       <section className="card">
