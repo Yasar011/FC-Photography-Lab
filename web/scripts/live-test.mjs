@@ -89,6 +89,7 @@ async function cleanup() {
     updates[`users/${u.uid}`] = null;
     updates[`roles/${u.uid}`] = null;
     updates[`admins/${u.uid}`] = null;
+    updates[`slotWatch/${u.uid}`] = null;
     if (u.niftId) updates[`students/${u.niftId.replace(/\//g, '_')}`] = null;
   }
   // Log entries made by the test accounts.
@@ -243,6 +244,13 @@ try {
   await expectFail('Student writes a one-click link', raw('fc', () => set(ref(db, `decisionTokens/${b2.bookingId}/deptCc`), { hash: 'x' })));
   await expectFail('Student reads the settings of other admins (roles)', raw('fc', () => get(ref(db, 'roles'))));
   await expectFail('Student books for tomorrow at a closed hour (rules check the time too)', raw('fc2', () => set(ref(db, 'bookings/FC-991231-0009'), { id: 'FC-991231-0009', studentUid: U.fc2.uid, email: U.fc2.email, studentType: 'FC_STUDENT', status: 'PENDING_FCCC_APPROVAL', date: today, startHour: 9, endHour: 10, startAt: Date.now() - 1000 })));
+  // Slot alerts ("notify me if it frees up"): each student only touches their own list.
+  const W = { date: D3, hour: 20, email: U.fc.email, name: 'Test', at: 1 };
+  await expectOk('Student saves own slot alert', raw('fc', () => set(ref(db, `slotWatch/${U.fc.uid}/${D3}_h20`), W)));
+  await expectFail("Student reads another student's slot alerts", raw('fc2', () => get(ref(db, `slotWatch/${U.fc.uid}`))));
+  await expectFail("Student adds an alert to another student's list", raw('fc2', () => set(ref(db, `slotWatch/${U.fc.uid}/${D3}_h21`), { ...W, email: U.fc2.email })));
+  await expectFail('Student saves an alert with another student email', raw('fc2', () => set(ref(db, `slotWatch/${U.fc2.uid}/${D3}_h21`), W)));
+  await expectFail('Student reads every slot alert', raw('fc', () => get(ref(db, 'slotWatch'))));
   await expectFail('Not signed-in user reads bookings', (async () => { await auth.signOut(); current = null; return get(ref(db, 'bookingSlots')); })());
 
   console.log('\nSame slot at the same time — 4 students, 4 separate processes');
